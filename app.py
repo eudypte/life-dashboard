@@ -1,5 +1,6 @@
 """Life Dashboard: read-only views over the nutrition-log data folder."""
 import datetime as dt
+import hashlib
 import tomllib
 from pathlib import Path
 
@@ -21,6 +22,8 @@ RANGES = (7, 30, 90)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+# Cloudflare caches /static for hours; a content hash in the URL makes each deploy fetch fresh CSS.
+templates.env.globals["css_version"] = hashlib.sha256((HERE / "static/style.css").read_bytes()).hexdigest()[:10]
 
 
 # ---------- template helpers ----------
