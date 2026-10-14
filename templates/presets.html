@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Presets · Life Dashboard{% endblock %}
+
+{% block main %}
+<fieldset class="span2">
+  <legend>[ Presets ]</legend>
+  <p class="dim" style="margin:0 0 8px">Saved templates, one serving each. Not counted as intake.</p>
+  {% if presets %}
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th class="l">preset</th><th>kcal</th><th>P</th><th>C</th><th>F</th></tr></thead>
+    <tbody>
+    {% for p in presets %}
+      <tr>
+        <td class="l wrap">{{ p.name }}
+          {% if p["items"] | length > 1 or (p["items"] and p["items"][0].food | lower != p.name | lower) %}
+          <div class="dim">{% for i in p["items"] %}{{ i.servings | n }} × {{ i.food }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+          {% endif %}</td>
+        <td class="kcal">{{ p.per.calories | n }}</td>
+        <td class="mp">{{ p.per.protein_g | n }}</td>
+        <td class="mc">{{ p.per.carbs_g | n }}</td>
+        <td class="mf">{{ p.per.fat_g | n }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">no presets saved yet</p>
+  {% endif %}
+</fieldset>
+{% endblock %}

@@ -1,0 +1,6 @@
+[Unit]
+Description=Deploy life-dashboard from origin/main
+
+[Service]
+Type=oneshot
+ExecStart=%h/life-dashboard/deploy.sh

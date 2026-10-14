@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_ui.html" import known, weight_svg %}
+{% set pg = goal.protein_goal_g %}
+
+{% block datebar %}
+  <a href="/?date={{ prev }}" aria-label="previous day" class="dim">&lt;</a>
+  <span class="hi">{{ date.strftime("%a %Y-%m-%d") }}</span>
+  {% if next %}<a href="/?date={{ next }}" aria-label="next day" class="dim">&gt;</a>
+    <a href="/" class="dim">(today)</a>{% else %}<span class="dim">&gt;</span>{% endif %}
+{% endblock %}
+
+{% block main %}
+<fieldset>
+  <legend>[ {{ "Today" if date == today else date.strftime("%b %d") }} ]</legend>
+  {% if rows %}
+  <dl class="kv">
+    <dt>Calories =</dt><dd><span class="kcal">{{ t.calories | n }}</span> <span class="dim">kcal · {{ t["items"] | plural("item") }}</span></dd>
+    <dt>Protein =</dt><dd><span class="mp">{{ t.protein_g | n }} g</span>{% if pg %} <span class="dim">/ {{ pg | n }} g</span>{% endif %}{{ known(t.protein_g_known, t["items"]) }}</dd>
+    <dt>Carbs =</dt><dd><span class="mc">{{ t.carbs_g | n }} g</span>{{ known(t.carbs_g_known, t["items"]) }}</dd>
+    <dt>Fat =</dt><dd><span class="mf">{{ t.fat_g | n }} g</span>{{ known(t.fat_g_known, t["items"]) }}</dd>
+  {% else %}
+  <p class="empty">nothing logged</p>
+  <dl class="kv">
+  {% endif %}
+    <dt>Weight =</dt><dd>{% for w in weighins %}{{ w.kg | wt }} <span class="dim">{{ w.time }}</span>{% if not loop.last %}, {% endif %}{% else %}<span class="dim">no weigh-in</span>{% endfor %}</dd>
+  </dl>
+</fieldset>
+
+<fieldset>
+  <legend>[ Last 7 days ]</legend>
+  <div class="bars">
+  {% for d in week %}
+    <div{% if d.date == date %} class="cur"{% endif %}>
+      <span class="{{ 'hi' if d.date == date else 'dim' }}">{{ d.date.strftime("%a %d") }}</span>
+      {% if d.logged %}<span class="b kcal"><i style="width:{{ d.totals.calories | pct(week_top) }}%"></i></span><span>{{ d.totals.calories | n }}</span>
+      {% else %}<span class="gap">· no entries</span>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  <dl class="kv" style="margin-top:8px">
+    <dt>Average =</dt><dd>{% if week_avg is not none %}<span class="kcal">{{ week_avg | n }}</span> <span class="dim">over {{ week | selectattr("logged") | list | length | plural("logged day") }}</span>{% else %}<span class="dim">no logged days</span>{% endif %}</dd>
+  </dl>
+</fieldset>
+
+<fieldset class="span2">
+  <legend>[ Entries ]</legend>
+  {% if rows %}
+  <div class="entries">
+    <div class="entry-head"><span>time</span><span>food</span><span>source</span><span>kcal</span><span>P</span><span>C</span><span>F</span></div>
+    {% for r in rows %}
+    <div class="entry">
+      <span class="dim">{{ r.time }}</span>
+      <span class="food"{% if r.notes or r.serving_size %} title="{{ r.serving_size }}{% if r.serving_size and r.notes %} · {% endif %}{{ r.notes }}"{% endif %}>{{ r.food }}{% if r.servings is not none and r.servings != 1 %} <span class="dim">×{{ r.servings | n }}</span>{% endif %}</span>
+      <span class="num kcal kcal-cell">{{ r.calories | n }}</span>
+      <span class="sub">
+        <span class="src src-{{ r.source }}"{% if r.source == "estimate" %} title="estimate: lowest confidence"{% endif %}>
+          {%- if r.source_url %}<a href="{{ r.source_url }}" target="_blank" rel="noreferrer noopener">{{ r.source }} ↗</a>{% else %}{{ r.source }}{% endif %}
+          {%- if r.suspect %} <span class="warn" title="calories differ from 4P+4C+9F by more than 20%">!</span>{% endif %}</span>
+        <span class="num mp">{{ r.protein_g | n }}</span><span class="num mc">{{ r.carbs_g | n }}</span><span class="num mf">{{ r.fat_g | n }}</span>
+      </span>
+    </div>
+    {% endfor %}
+    <div class="entry entry-total">
+      <span class="dim">total</span><span class="dim">? = unknown, not 0</span>
+      <span class="num kcal kcal-cell">{{ t.calories | n }}</span>
+      <span class="sub"><span class="src"></span><span class="num mp">{{ t.protein_g | n }}</span><span class="num mc">{{ t.carbs_g | n }}</span><span class="num mf">{{ t.fat_g | n }}</span></span>
+    </div>
+  </div>
+  {% else %}
+  <p class="empty">nothing logged {{ "today" if date == today else "on this day" }}</p>
+  {% endif %}
+</fieldset>
+
+<fieldset>
+  <legend>[ Weight · 30 d ]</legend>
+  {% if chart %}
+  {{ weight_svg(chart, unit) }}
+  <dl class="kv">
+    <dt>Latest =</dt><dd>{{ weight_stats.latest.kg | wt }} <span class="dim">{{ weight_stats.latest.date.strftime("%b %d") }} {{ weight_stats.latest.time }}</span></dd>
+    <dt>30d mean =</dt><dd>{{ weight_stats.mean | wt }} <span class="dim">{{ weight_stats.count }} weigh-ins · line = 7-day mean</span></dd>
+    <dt>Change =</dt><dd>{{ weight_stats.change | wtd }} <span class="dim">first to last</span></dd>
+  </dl>
+  {% else %}
+  <p class="empty">no weigh-ins in the last 30 days</p>
+  {% endif %}
+</fieldset>
+
+<fieldset>
+  <legend>[ Protein{{ " goal" if pg }} ]</legend>
+  {% if pg %}
+  <div class="bars"><div style="grid-template-columns: 21ch auto">
+    <span class="b track mp"><i style="width:{{ t.protein_g | pct(pg) }}%"></i></span>
+    <span class="mp">{{ (100 * t.protein_g / pg) | round | int }}%</span>
+  </div></div>
+  <dl class="kv" style="margin-top:8px">
+    <dt>{{ "Today" if date == today else date.strftime("%b %d") }} =</dt><dd><span class="mp">{{ t.protein_g | n }} g</span> <span class="dim">/ {{ pg | n }} g goal</span></dd>
+    <dt>Left =</dt><dd>{% if t.protein_g >= pg %}<span class="kcal">goal hit ✓</span>{% else %}{{ (pg - t.protein_g) | n }} g{% endif %}</dd>
+    {% if rows %}<dt>Coverage =</dt><dd class="dim">protein known for {{ t.protein_g_known }}/{{ t["items"] }} items</dd>{% endif %}
+  </dl>
+  {% endif %}
+  <div class="bars" style="margin-top:10px">
+  {% for d in week %}
+    <div>
+      <span class="{{ 'hi' if d.date == date else 'dim' }}">{{ d.date.strftime("%a %d") }}</span>
+      {% if d.logged %}<span class="b mp"><i style="width:{{ d.totals.protein_g | pct(protein_top) }}%"></i></span>
+        <span>{{ d.totals.protein_g | n }}{% if pg and d.totals.protein_g >= pg %} <span class="kcal">✓</span>{% endif %}</span>
+      {% else %}<span class="gap">· no entries</span>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  {% if pg %}
+  {% set logged = week | selectattr("logged") | list %}
+  <dl class="kv" style="margin-top:8px"><dt>Hit goal =</dt><dd>{{ logged | selectattr("totals.protein_g", "ge", pg) | list | length }} of {{ logged | length | plural("logged day") }}</dd></dl>
+  {% endif %}
+</fieldset>
+{% endblock %}

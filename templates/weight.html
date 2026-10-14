@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_ui.html" import ranges, weight_svg %}
+{% block title %}Weight · Life Dashboard{% endblock %}
+
+{% block main %}
+<fieldset class="span2">
+  <legend>[ Weight · {{ days }} d ] {{ ranges("/weight", days) }}</legend>
+  {% if chart %}
+  {{ weight_svg(chart, unit, "only-wide") }}
+  {{ weight_svg(chart_narrow, unit, "only-narrow") }}
+  <dl class="kv">
+    <dt>Latest =</dt><dd>{{ stats.latest.kg | wt }} <span class="dim">{{ stats.latest.date.strftime("%b %d") }} {{ stats.latest.time }}</span></dd>
+    <dt>Mean =</dt><dd>{{ stats.mean | wt }} <span class="dim">all {{ stats.count }} weigh-ins · line = 7-day mean</span></dd>
+    <dt>Change =</dt><dd>{{ stats.change | wtd }} <span class="dim">first to last</span></dd>
+  </dl>
+  {% else %}
+  <p class="empty">no weigh-ins in the last {{ days }} days</p>
+  {% endif %}
+</fieldset>
+
+{% if entries %}
+<fieldset class="span2">
+  <legend>[ Weigh-ins ]</legend>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th class="l">day</th><th class="l">time</th><th>weight</th><th class="l hide-narrow">entered</th><th class="l">source</th><th class="l hide-narrow">notes</th></tr></thead>
+    <tbody>
+    {% for w in entries %}
+      <tr>
+        <td class="l dim">{{ w.date.strftime("%a %m-%d") }}</td>
+        <td class="l dim">{{ w.time }}</td>
+        <td>{{ w.kg | wt }}</td>
+        <td class="l dim hide-narrow">{{ w.entered }}</td>
+        <td class="l">{{ w.source }}</td>
+        <td class="l wrap dim hide-narrow">{{ w.notes }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</fieldset>
+{% endif %}
+{% endblock %}

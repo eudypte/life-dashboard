@@ -1,0 +1,23 @@
+{# Shared snippets. #}
+
+{% macro known(count, total) -%}
+  {%- if total and count < total %} <span class="dim">· {{ count }}/{{ total }} known</span>{% endif -%}
+{%- endmacro %}
+
+{% macro ranges(view_href, days) -%}
+  <span class="ranges">{% for r in [7, 30, 90] %}<a href="{{ view_href }}?days={{ r }}"{% if r == days %} aria-current="true"{% endif %}>{{ r }}d</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>
+{%- endmacro %}
+
+{% macro weight_svg(chart, unit, cls="") -%}
+<svg class="chart {{ cls }}" viewBox="0 0 {{ chart.w }} {{ chart.h }}" role="img" aria-label="Weight in {{ unit }}, points with 7-day rolling mean">
+  {% for y, label in chart.yticks %}
+  <line class="grid" x1="{{ chart.left }}" y1="{{ y }}" x2="{{ chart.right }}" y2="{{ y }}"/>
+  <text x="0" y="{{ y + 5 }}">{{ label }}</text>
+  {% endfor %}
+  {% for x, anchor, d in chart.xlabels %}
+  <text x="{{ x }}" y="{{ chart.h - 6 }}" text-anchor="{{ anchor }}">{{ d.strftime("%b %d") }}</text>
+  {% endfor %}
+  {% for x, y in chart.points %}<circle class="pt" cx="{{ x }}" cy="{{ y }}" r="2.6"/>{% endfor %}
+  <polyline class="mean" points="{{ chart.mean }}"/>
+</svg>
+{%- endmacro %}

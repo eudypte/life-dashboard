@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_ui.html" import ranges %}
+{% block title %}Macros · Life Dashboard{% endblock %}
+
+{% macro split_bar(s) -%}
+<div class="split" role="img" aria-label="protein {{ s.p_pct | round | int }}%, carbs {{ s.c_pct | round | int }}%, fat {{ s.f_pct | round | int }}%">
+  <span class="sp" style="width:{{ s.p_pct }}%"></span><span class="sc" style="width:{{ s.c_pct }}%"></span><span class="sf" style="width:{{ s.f_pct }}%"></span>
+</div>
+{%- endmacro %}
+
+{% block main %}
+<fieldset class="span2">
+  <legend>[ Macro split · {{ days }} d ] {{ ranges("/macros", days) }}</legend>
+  <p class="dim" style="margin:0 0 8px">kcal from protein / carbs / fat (4 / 4 / 9 kcal per g), counting only items where all three are known.</p>
+  {% if overall %}
+  {{ split_bar(overall) }}
+  <dl class="kv" style="margin-top:8px">
+    <dt>Protein =</dt><dd><span class="mp">{{ overall.p_pct | round | int }}%</span></dd>
+    <dt>Carbs =</dt><dd><span class="mc">{{ overall.c_pct | round | int }}%</span></dd>
+    <dt>Fat =</dt><dd><span class="mf">{{ overall.f_pct | round | int }}%</span></dd>
+    <dt>Coverage =</dt><dd class="dim">{{ overall.rows }}/{{ overall.of_rows }} items · {{ overall.kcal_covered | n }} of {{ overall.kcal_total | n }} kcal</dd>
+  </dl>
+  {% else %}
+  <p class="empty">no items with all three macros in this range</p>
+  {% endif %}
+</fieldset>
+
+<fieldset class="span2">
+  <legend>[ Days ]</legend>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th class="l">day</th><th class="l">split</th><th>P</th><th>C</th><th>F</th><th>coverage</th></tr></thead>
+    <tbody>
+    {% for d in hist %}
+      {% if d.split %}
+      <tr>
+        <td class="l{{ ' hi' if d.date == today else ' dim' }}"><a href="/?date={{ d.date }}">{{ d.date.strftime("%a %m-%d") }}</a></td>
+        <td class="l" style="width:40%">{{ split_bar(d.split) }}</td>
+        <td class="mp">{{ d.split.p_pct | round | int }}%</td>
+        <td class="mc">{{ d.split.c_pct | round | int }}%</td>
+        <td class="mf">{{ d.split.f_pct | round | int }}%</td>
+        <td class="dim">{{ d.split.rows }}/{{ d.split.of_rows }}</td>
+      </tr>
+      {% else %}
+      <tr class="gap"><td class="l">{{ d.date.strftime("%a %m-%d") }}</td><td class="l" colspan="5">· {{ "no items with all three macros" if d.logged else "no entries" }}</td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</fieldset>
+{% endblock %}

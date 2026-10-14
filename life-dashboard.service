@@ -1,0 +1,11 @@
+[Unit]
+Description=Life Dashboard (read-only, localhost:8090)
+After=network.target
+
+[Service]
+WorkingDirectory=%h/life-dashboard
+ExecStart=%h/life-dashboard/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8090 --no-access-log
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
