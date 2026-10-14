@@ -113,7 +113,7 @@ def today_view(request: Request, date: dt.date | None = None):
         request, "today.html", "today",
         date=date, rows=rows, t=data.totals(rows), week=week,
         week_avg=data.average(week, "calories"),
-        week_top=max(d["totals"]["calories"] for d in week),
+        week_top=goals().get("calorie_goal_kcal") or max(d["totals"]["calories"] for d in week),
         protein_top=goals().get("protein_goal_g") or max(d["totals"]["protein_g"] for d in week),
         weighins=[w for w in all_ws if w["date"] == date],
         weight_stats=data.weight_stats(month), chart=weight_chart(month, all_ws, date, 30),
@@ -130,7 +130,7 @@ def calories_view(request: Request, days: int = Query(30, ge=1, le=366)):
         request, "calories.html", "calories", days=days, hist=hist[::-1],
         logged=len(logged),
         avg={n: data.average(hist, n) for n in ("calories", "protein_g", "carbs_g", "fat_g")},
-        top=max((d["totals"]["calories"] for d in hist), default=0),
+        top=goals().get("calorie_goal_kcal") or max((d["totals"]["calories"] for d in hist), default=0),
         goal_hits=sum(d["totals"]["protein_g"] >= goals().get("protein_goal_g", float("inf"))
                       for d in logged),
     )

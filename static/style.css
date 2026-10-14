@@ -77,7 +77,13 @@ footer { margin-top: 22px; font-size: 12px; color: var(--dim); }
 .bars > div { display: grid; grid-template-columns: 7ch 21ch auto; column-gap: 1ch; white-space: nowrap; }
 .b { display: inline-block; width: 100%; height: 0.9em; vertical-align: -0.08em; }
 .b i { display: block; height: 100%; background: currentColor; }
-.b.track { background: var(--bg2); }
+.b.track { position: relative; }
+.b.track::before { content: "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░"; position: absolute; inset: 0; overflow: hidden; line-height: .9em; opacity: .55; }
+.b.track i { position: relative; }
+/* over-goal days spill past the track end into a 5ch gutter (24% of the 21ch bar) */
+.b.track i.over { position: absolute; top: 0; left: 100%; max-width: calc(5ch - 4px); background: color-mix(in srgb, currentColor 45%, transparent); }
+.bars.spill > div { grid-template-columns: 7ch 21ch 5ch auto; }
+.bars.spill > div > :last-child:not(.gap) { grid-column: 4; }
 .bars .gap { grid-column: 2 / -1; color: var(--dim); }
 .bars .cur { color: var(--hi); }
 
@@ -107,7 +113,8 @@ td { text-align: right; padding: 3px 8px; white-space: nowrap; color: var(--hi);
 tbody tr:nth-child(odd) td { background: var(--bg2); }
 th.l, td.l { text-align: left; }
 td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 14ch; }
-td.bar { width: 22ch; }
+td.bar { width: 27ch; }
+td.bar .b { width: calc(100% - 5ch); }  /* gutter for the over-goal spill */
 tr.gap td { color: var(--dim); }
 .split { display: flex; height: 12px; min-width: 12ch; }
 .split span { display: block; height: 100%; }
@@ -123,6 +130,8 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
 /* ---------- narrow screens ---------- */
 @media (max-width: 1000px) {
   .main { grid-template-columns: minmax(0, 1fr); }
+  .main > :first-child { order: -2; }
+  .main > .protein { order: -1; }  /* one column: Protein goal right after Today */
 }
 @media (max-width: 720px) {
   body { padding: 12px 12px 24px; font-size: 13px; }
@@ -144,6 +153,8 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
   .entry .sub .mp::after { content: "p"; } .entry .sub .mc::after { content: "c"; } .entry .sub .mf::after { content: "f"; }
   .entry-total .sub .src { display: none; }
   .bars > div { grid-template-columns: 6ch minmax(0, 1fr) auto; }
+  .bars.spill > div { grid-template-columns: 6ch minmax(0, 1fr) 4ch auto; }
+  .b.track i.over { max-width: calc(4ch - 4px); }
   .hide-narrow { display: none; }
   svg.chart text { font-size: 20px; }  /* 600-unit-wide charts render at ~0.55x here */
   svg.chart.only-wide { display: none; }

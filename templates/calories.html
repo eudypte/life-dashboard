@@ -24,7 +24,7 @@
       {% if d.logged %}
       <tr>
         <td class="l{{ ' hi' if d.date == today else ' dim' }}"><a href="/?date={{ d.date }}">{{ d.date.strftime("%a %m-%d") }}</a></td>
-        <td class="bar hide-narrow"><span class="b kcal"><i style="width:{{ d.totals.calories | pct(top) }}%"></i></span></td>
+        <td class="bar hide-narrow"><span class="b track kcal"><i style="width:{{ d.totals.calories | pct(top) }}%"></i>{% if top and d.totals.calories > top %}<i class="over" style="width:{{ [100 * (d.totals.calories / top - 1), 24] | min | round(1) }}%"></i>{% endif %}</span></td>
         <td class="kcal">{{ d.totals.calories | n }}</td>
         <td class="mp">{{ d.totals.protein_g | n }}{% if pg and d.totals.protein_g >= pg %} <span class="kcal">✓</span>{% endif %}</td>
         <td class="mc">{{ d.totals.carbs_g | n }}</td>

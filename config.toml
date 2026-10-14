@@ -1,3 +1,4 @@
 # Daily targets. Read on every request, so edits apply without a restart.
 # Remove a line to hide that goal.
 protein_goal_g = 140
+calorie_goal_kcal = 2000

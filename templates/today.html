@@ -28,17 +28,17 @@
 
 <fieldset>
   <legend>[ Last 7 days ]</legend>
-  <div class="bars">
+  <div class="bars spill">
   {% for d in week %}
     <div{% if d.date == date %} class="cur"{% endif %}>
       <span class="{{ 'hi' if d.date == date else 'dim' }}">{{ d.date.strftime("%a %d") }}</span>
-      {% if d.logged %}<span class="b kcal"><i style="width:{{ d.totals.calories | pct(week_top) }}%"></i></span><span>{{ d.totals.calories | n }}</span>
+      {% if d.logged %}<span class="b track kcal"><i style="width:{{ d.totals.calories | pct(week_top) }}%"></i>{% if week_top and d.totals.calories > week_top %}<i class="over" style="width:{{ [100 * (d.totals.calories / week_top - 1), 24] | min | round(1) }}%"></i>{% endif %}</span><span>{{ d.totals.calories | n }}</span>
       {% else %}<span class="gap">· no entries</span>{% endif %}
     </div>
   {% endfor %}
   </div>
   <dl class="kv" style="margin-top:8px">
-    <dt>Average =</dt><dd>{% if week_avg is not none %}<span class="kcal">{{ week_avg | n }}</span> <span class="dim">over {{ week | selectattr("logged") | list | length | plural("logged day") }}</span>{% else %}<span class="dim">no logged days</span>{% endif %}</dd>
+    <dt>Average =</dt><dd>{% if week_avg is not none %}<span class="kcal">{{ week_avg | n }}</span>{% else %}<span class="dim">no logged days</span>{% endif %}</dd>
   </dl>
 </fieldset>
 
@@ -61,7 +61,7 @@
     </div>
     {% endfor %}
     <div class="entry entry-total">
-      <span class="dim">total</span><span class="dim">? = unknown, not 0</span>
+      <span class="dim">total</span><span></span>
       <span class="num kcal kcal-cell">{{ t.calories | n }}</span>
       <span class="sub"><span class="src"></span><span class="num mp">{{ t.protein_g | n }}</span><span class="num mc">{{ t.carbs_g | n }}</span><span class="num mf">{{ t.fat_g | n }}</span></span>
     </div>
@@ -85,7 +85,7 @@
   {% endif %}
 </fieldset>
 
-<fieldset>
+<fieldset class="protein">
   <legend>[ Protein{{ " goal" if pg }} ]</legend>
   {% if pg %}
   <div class="bars"><div style="grid-template-columns: 21ch auto">
@@ -94,15 +94,13 @@
   </div></div>
   <dl class="kv" style="margin-top:8px">
     <dt>{{ "Today" if date == today else date.strftime("%b %d") }} =</dt><dd><span class="mp">{{ t.protein_g | n }} g</span> <span class="dim">/ {{ pg | n }} g goal</span></dd>
-    <dt>Left =</dt><dd>{% if t.protein_g >= pg %}<span class="kcal">goal hit ✓</span>{% else %}{{ (pg - t.protein_g) | n }} g{% endif %}</dd>
-    {% if rows %}<dt>Coverage =</dt><dd class="dim">protein known for {{ t.protein_g_known }}/{{ t["items"] }} items</dd>{% endif %}
   </dl>
   {% endif %}
-  <div class="bars" style="margin-top:10px">
+  <div class="bars spill" style="margin-top:10px">
   {% for d in week %}
     <div>
       <span class="{{ 'hi' if d.date == date else 'dim' }}">{{ d.date.strftime("%a %d") }}</span>
-      {% if d.logged %}<span class="b mp"><i style="width:{{ d.totals.protein_g | pct(protein_top) }}%"></i></span>
+      {% if d.logged %}<span class="b track mp"><i style="width:{{ d.totals.protein_g | pct(protein_top) }}%"></i>{% if protein_top and d.totals.protein_g > protein_top %}<i class="over" style="width:{{ [100 * (d.totals.protein_g / protein_top - 1), 24] | min | round(1) }}%"></i>{% endif %}</span>
         <span>{{ d.totals.protein_g | n }}{% if pg and d.totals.protein_g >= pg %} <span class="kcal">✓</span>{% endif %}</span>
       {% else %}<span class="gap">· no entries</span>{% endif %}
     </div>
