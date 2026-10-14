@@ -74,7 +74,7 @@ legend { padding: 0 4px; margin-left: 6px; color: var(--fg); }
 footer { margin-top: 22px; font-size: 12px; color: var(--dim); }
 
 /* ---------- text bars ---------- */
-.bars > div { display: grid; grid-template-columns: 7ch 21ch auto; column-gap: 1ch; white-space: nowrap; }
+.bars > div { display: grid; grid-template-columns: 7ch 21ch auto; column-gap: 1ch; align-items: center; white-space: nowrap; }
 .b { display: inline-block; width: 100%; height: 0.9em; vertical-align: -0.08em; }
 .b i { display: block; height: 100%; background: currentColor; }
 .b.track { position: relative; }
@@ -152,8 +152,8 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
   .entry .sub .num { text-align: left; }
   .entry .sub .mp::after { content: "p"; } .entry .sub .mc::after { content: "c"; } .entry .sub .mf::after { content: "f"; }
   .entry-total .sub .src { display: none; }
-  .bars > div { grid-template-columns: 6ch minmax(0, 1fr) auto; }
-  .bars.spill > div { grid-template-columns: 6ch minmax(0, 1fr) 4ch auto; }
+  .bars > div { grid-template-columns: 6ch minmax(0, 1fr) 7ch; }  /* fixed number column: every row gets the same bar width ("125.5 ✓" = 7ch) */
+  .bars.spill > div { grid-template-columns: 6ch minmax(0, 1fr) 4ch 7ch; }
   .b.track i.over { max-width: calc(4ch - 4px); }
   .hide-narrow { display: none; }
   svg.chart text { font-size: 20px; }  /* 600-unit-wide charts render at ~0.55x here */
