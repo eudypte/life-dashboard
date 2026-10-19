@@ -69,12 +69,9 @@ def weight_chart(window, all_ws, end: dt.date, days: int, w: int = 600, h: int =
     left, right, top, bottom = 58, w - 10, 12, h - 30
 
     def x(e):
-        try:
-            hours, minutes = map(int, e["time"].split(":"))
-            frac = (hours * 60 + minutes) / 1440
-        except ValueError:
-            frac = 0.5
-        return left + ((e["date"] - start).days + frac) / days * (right - left)
+        # Center of the logged day: times can be placeholders (a moved entry gets 23:56),
+        # and plotting by time pushes late-night weigh-ins onto the next day.
+        return left + ((e["date"] - start).days + 0.5) / days * (right - left)
 
     def y(v):
         return top + (hi - v) / (hi - lo) * (bottom - top)
