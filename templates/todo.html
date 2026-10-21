@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_ui.html" import task_row, parsed %}
+{% set legend = {"today": "Today · " ~ today.strftime("%a %b ") ~ today.day, "inbox": "Inbox", "upcoming": "Upcoming"}.get(page, "# " ~ project) %}
+{% block title %}Todo · Life Dashboard{% endblock %}
+{% block refresh %}{% endblock %}{# a refresh would wipe a half-typed task #}
+
+{% block subnav %}
+<div class="sub">
+  {% for key, href, n in [("inbox", "/todo/inbox", counts.inbox), ("today", "/todo", counts.today), ("upcoming", "/todo/upcoming", 0)] %}
+  <a href="{{ href }}"{% if page == key %} aria-current="page"{% endif %}>{{ key }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>
+  {% endfor %}
+  {% if counts.projects %}<div class="subsep"></div>{% endif %}
+  {% for name, n in counts.projects %}
+  <a href="/todo/project/{{ name | urlencode }}"{% if page == "project" and project == name %} aria-current="page"{% endif %}># {{ name }}<span class="n">{{ n }}</span></a>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block main %}
+<fieldset class="span2">
+  <legend>[ {{ legend }} ]</legend>
+  <form class="add" method="post" action="/todo/add">
+    <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="project" value="{{ project or '' }}">
+    <span class="plus">+</span><input name="q" placeholder="{{ 'add to #' ~ project ~ '…' if project else 'add a task…' }}" autocomplete="off" spellcheck="false" aria-label="quick add" required>
+    <button class="btn">add ⏎</button>
+  </form>
+  <div class="preview" aria-live="polite">{{ parsed(none, today) }}</div>
+  {% if added %}<div class="flash"><span class="dim">added</span> {{ parsed(added, today) }}</div>{% endif %}
+  {% if ticked %}
+  <div class="flash"><span class="kcal">✓</span> <span class="hi">{{ ticked.title }}</span>
+    {%- if ticked.repeat %} <span class="dim">· next {{ ticked.due | day_label(today, true) }}</span>{% endif %} ·
+    <form class="inline" method="post" action="/todo/{{ ticked.id }}/done"><input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="undo" value="1"><button class="link">undo</button></form></div>
+  {% endif %}
+  <div class="tasks">
+  {% for g in groups if g.rows or g.keep %}
+    <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">· {{ g.note }}</span>{% endif %} <span class="dim">· {{ g.rows | length or "nothing" }}</span></div>
+    {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project") }}{% endfor %}</div>{% endif %}
+  {% else %}
+    <p class="empty">nothing here</p>
+  {% endfor %}
+  </div>
+</fieldset>
+<datalist id="projects">{% for name, n in counts.projects %}<option value="{{ name }}">{% endfor %}</datalist>
+<script>
+  // Live preview of what quick add reads. The form works without it.
+  const q = document.querySelector(".add [name=q]"), out = document.querySelector(".add + .preview");
+  let timer;
+  q.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const sent = q.value;
+      const r = await fetch("/todo/parse?" + new URLSearchParams({ q: sent, page: q.form.page.value, project: q.form.project.value }));
+      if (r.ok && q.value === sent) out.innerHTML = await r.text();
+    }, 120);
+  });
+</script>
+{% endblock %}
+
+{% block footer %}tasks are saved on the VM · no auto-refresh on this page{% endblock %}

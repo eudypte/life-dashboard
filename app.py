@@ -1,14 +1,17 @@
-"""Life Dashboard: read-only views over the nutrition-log data folder."""
+"""Life Dashboard: read-only views over the nutrition-log data folder, plus a todo list."""
 import datetime as dt
 import hashlib
 import tomllib
 from pathlib import Path
+from urllib.parse import parse_qs, quote
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import data
+import todo
 
 HERE = Path(__file__).parent
 CFG = data.load_config()
@@ -18,6 +21,8 @@ THEMES = {
     "tokyo-night": "Tokyo Night", "amber": "Amber CRT", "paper": "Paper",
 }
 RANGES = (7, 30, 90)
+TODO_DB = todo.db_path(CFG.data_dir)  # refuses a path inside NUTRITION_DIR
+todo.init(TODO_DB)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -52,7 +57,8 @@ def weight_delta(kg) -> str:
     return f"{data.to_unit(kg, CFG.weight_unit):+.1f} {CFG.weight_unit}"
 
 
-templates.env.filters |= {"n": fmt, "pct": pct, "plural": plural, "wt": weight, "wtd": weight_delta}
+templates.env.filters |= {"n": fmt, "pct": pct, "plural": plural, "wt": weight, "wtd": weight_delta,
+                          "day_label": todo.day_label, "task_meta": todo.meta}
 
 
 def weight_chart(window, all_ws, end: dt.date, days: int, w: int = 600, h: int = 220):
@@ -162,3 +168,92 @@ def weight_view(request: Request, days: int = Query(30, ge=1, le=366)):
 @app.get("/presets")
 def presets_view(request: Request):
     return render(request, "presets.html", "presets", presets=data.presets(CFG))
+
+
+# ---------- todo ----------
+# The only writes. Plain forms that answer 303 back to the page they came from.
+
+def todo_render(request: Request, page: str, project: str | None = None, edit: int | None = None,
+                added: int | None = None, done: int | None = None):
+    today = data.logical_today(CFG)
+    ts = todo.tasks(TODO_DB, today)
+    groups = todo.groups(ts, today, page, project)
+    ticked = todo.get(TODO_DB, done) if done else None
+    if ticked and any(ticked["id"] == t["id"] for g in groups if g["done"] for t in g["rows"]):
+        ticked = None  # still on the page, struck through in the done group
+    return render(
+        request, "todo.html", "todo", page=page, project=project, groups=groups, counts=todo.counts(ts, today),
+        here="/todo/project/" + quote(project, safe="") if project else {"today": "/todo"}.get(page, "/todo/" + page),
+        edit=edit, added=todo.get(TODO_DB, added) if added else None, ticked=ticked, rules=todo.RULES,
+    )
+
+
+@app.get("/todo/parse")
+def todo_parse(request: Request, q: str = "", page: str = "", project: str = ""):
+    """The quick-add preview line, as an HTML fragment."""
+    today = data.logical_today(CFG)
+    p = todo.parse(q, today, today if page == "today" else None, project or None)
+    return templates.TemplateResponse(request, "_todo_preview.html", {"p": p, "today": today})
+
+
+@app.get("/todo")
+@app.get("/todo/{page}")
+def todo_view(request: Request, page: str = "today", edit: int | None = None,
+              added: int | None = None, done: int | None = None):
+    if request.url.path != "/todo" and page not in ("inbox", "upcoming"):
+        raise HTTPException(404)
+    return todo_render(request, page, edit=edit, added=added, done=done)
+
+
+@app.get("/todo/project/{name}")
+def todo_project(request: Request, name: str, edit: int | None = None,
+                 added: int | None = None, done: int | None = None):
+    return todo_render(request, "project", name, edit=edit, added=added, done=done)
+
+
+async def form(request: Request) -> dict:
+    """Form fields, last value wins. Stdlib parsing, so no python-multipart dependency."""
+    return {k: v[-1] for k, v in parse_qs((await request.body()).decode(errors="replace"), keep_blank_values=True).items()}
+
+
+def back(f: dict, query: str = "", task_id: int | None = None) -> RedirectResponse:
+    page = f.get("next", "")
+    page = page if page.startswith("/todo") else "/todo"  # only ever back to a todo page
+    return RedirectResponse(page + query + (f"#t{task_id}" if task_id else ""), status_code=303)
+
+
+@app.post("/todo/add")
+async def todo_add(request: Request):
+    f = await form(request)
+    today = data.logical_today(CFG)
+    t = todo.parse(f.get("q", ""), today, today if f.get("page") == "today" else None, f.get("project") or None)
+    if not t["title"]:
+        return back(f)
+    task_id = todo.add(TODO_DB, t, dt.datetime.now())
+    return back(f, f"?added={task_id}", task_id)
+
+
+@app.post("/todo/{task_id}/done")
+async def todo_done(request: Request, task_id: int):
+    f = await form(request)
+    if f.get("undo"):
+        todo.untick(TODO_DB, task_id)
+        return back(f, task_id=task_id)
+    todo.tick(TODO_DB, task_id, data.logical_today(CFG))
+    return back(f, f"?done={task_id}", task_id)
+
+
+@app.post("/todo/{task_id}/edit")
+async def todo_edit(request: Request, task_id: int):
+    f = await form(request)
+    t = todo.from_form(f, data.logical_today(CFG))
+    if t:
+        todo.update(TODO_DB, task_id, t)
+    return back(f, task_id=task_id)
+
+
+@app.post("/todo/{task_id}/delete")
+async def todo_delete(request: Request, task_id: int):
+    f = await form(request)
+    todo.delete(TODO_DB, task_id)
+    return back(f)

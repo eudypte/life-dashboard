@@ -21,3 +21,50 @@
   <polyline class="mean" points="{{ chart.mean }}"/>
 </svg>
 {%- endmacro %}
+
+{# ---------- todo ---------- #}
+
+{% macro parsed(p, today) -%}
+  {%- if p and p.title -%}
+    → <span class="ti">{{ p.title }}</span>
+    {#- #}<span class="chip{{ ' mc' if p.due }}">{{ p.due | day_label(today, true) if p.due else "no date" }}{{ " " ~ p.due_time if p.due_time }}</span>
+    {#- #}{% if p.repeat %}<span class="chip">↻ {{ p.repeat }}</span>{% endif %}
+    {#- #}{% if p.priority < 4 %}<span class="chip p{{ p.priority }}">p{{ p.priority }}</span>{% endif %}
+    {#- #}<span class="chip acc">{{ "#" ~ p.project if p.project else "inbox" }}</span>
+  {%- else -%}
+    <span class="hint">fri 5pm · p1 · #project · every week</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro task_row(t, g, here, edit, today, rules, show_project) -%}
+{%- set pri = " p" ~ t.priority if t.priority < 4 and not g.done else "" %}
+{%- if edit == t.id %}
+<div class="t editing" id="t{{ t.id }}">
+  <span class="box{{ pri }}">{{ "[x]" if g.done else "[ ]" }}</span>
+  <form class="edit" method="post" action="/todo/{{ t.id }}/edit">
+    <input type="hidden" name="next" value="{{ here }}">
+    <input class="title" name="title" value="{{ t.title }}" aria-label="task name" required>
+    <div class="fields">
+      <label>due <input type="date" name="due" value="{{ t.due or '' }}"></label>
+      <label>time <input type="time" name="due_time" value="{{ t.due_time or '' }}"></label>
+      <label>priority <select name="priority">{% for p in range(1, 5) %}<option value="{{ p }}"{% if p == t.priority %} selected{% endif %}>p{{ p }}{{ " (none)" if p == 4 }}</option>{% endfor %}</select></label>
+      <label>project <input class="proj" name="project" list="projects" value="{{ t.project or '' }}" placeholder="inbox"></label>
+      <label>repeat <select name="repeat"><option value="">never</option>
+        {%- for r in (rules | list) + ([t.repeat] if t.repeat and t.repeat not in rules else []) %}<option{% if r == t.repeat %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="actions">
+      <button class="btn">save</button><a href="{{ here }}#t{{ t.id }}">cancel</a>
+      <details class="del"><summary>delete</summary><button class="btn" formaction="/todo/{{ t.id }}/delete">yes, delete</button></details>
+    </div>
+  </form>
+</div>
+{%- else %}
+<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}">
+  <form class="tick" method="post" action="/todo/{{ t.id }}/done"><input type="hidden" name="next" value="{{ here }}">
+    {%- if g.done %}<input type="hidden" name="undo" value="1">{% endif -%}
+    <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>
+  <a class="name" href="{{ here }}?edit={{ t.id }}#t{{ t.id }}">{{ t.title }}</a>
+  <span class="meta">{% for text, cls in t | task_meta(g, today, show_project) %}{% if not loop.first %} · {% endif %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endfor %}</span>
+</div>
+{%- endif %}
+{%- endmacro %}

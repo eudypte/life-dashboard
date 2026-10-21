@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="60">
+{% block refresh %}<meta http-equiv="refresh" content="60">{% endblock %}
 <meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
 <title>{% block title %}Life Dashboard{% endblock %}</title>
 <link rel="stylesheet" href="/static/style.css?v={{ css_version }}">
 <script>try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "solarized-dark"; } catch (e) {}</script>
@@ -26,10 +27,11 @@
     <fieldset>
       <legend>[ Views ]</legend>
       <div class="links">
-      {% for key, label, href in [("today", "Today", "/"), ("calories", "Calories", "/calories"), ("macros", "Macros", "/macros"), ("weight", "Weight", "/weight")] %}
-        <a href="{{ href }}"{% if view == key %} aria-current="page"{% endif %}><span class="mark">{{ "▶" if view == key else "▷" }} </span>{{ label }}</a>
+      {% for key, label, href in [("today", "Today", "/"), ("calories", "Calories", "/calories"), ("macros", "Macros", "/macros"), ("weight", "Weight", "/weight"), ("todo", "Todo", "/todo")] %}
+        <a href="{{ href }}"{% if view == key %} aria-current="{{ 'true' if key == 'todo' else 'page' }}"{% endif %}><span class="mark">{{ "▶" if view == key else "▷" }} </span>{{ label }}</a>
       {% endfor %}
       </div>
+      {% block subnav %}{% endblock %}
       <div class="sep"></div>
       <label class="dim" for="theme">theme</label>
       <select id="theme">
@@ -40,7 +42,7 @@
   <main class="main">{% block main %}{% endblock %}</main>
 </div>
 
-<footer>read-only · refreshes every 60 s · weights in {{ unit }}</footer>
+<footer>{% block footer %}read-only · refreshes every 60 s · weights in {{ unit }}{% endblock %}</footer>
 
 <script>
   const sel = document.getElementById("theme");

@@ -5,4 +5,5 @@ __pycache__/
 # data never belongs in this repo
 *.csv
 presets.json
+*.sqlite
 .lavish
