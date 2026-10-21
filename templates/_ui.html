@@ -24,16 +24,28 @@
 
 {# ---------- todo ---------- #}
 
-{% macro parsed(p, today) -%}
-  {%- if p and p.title -%}
+{# What quick add read. title=true (the "added" line): the task's name and all its fields.
+   title=false (the line under a quick-add box): only what the parser picked up, or the syntax hint. #}
+{% macro parsed(p, today, title=true) -%}
+  {%- if p and p.title and title -%}
     → <span class="ti">{{ p.title }}</span>
     {#- #}<span class="chip{{ ' mc' if p.due }}">{{ p.due | day_label(today, true) if p.due else "no date" }}{{ " " ~ p.due_time if p.due_time }}</span>
     {#- #}{% if p.repeat %}<span class="chip">↻ {{ p.repeat }}</span>{% endif %}
     {#- #}{% if p.priority < 4 %}<span class="chip p{{ p.priority }}">p{{ p.priority }}</span>{% endif %}
     {#- #}<span class="chip acc">{{ "#" ~ p.project if p.project else "inbox" }}</span>
+  {%- elif p and not title and (p.due or p.repeat or p.priority < 4 or p.project) -%}
+    {%- if p.due %}<span class="chip mc">{{ p.due | day_label(today, true) }}{{ " " ~ p.due_time if p.due_time }}</span>{% endif %}
+    {#- #}{% if p.repeat %}<span class="chip">↻ {{ p.repeat }}</span>{% endif %}
+    {#- #}{% if p.priority < 4 %}<span class="chip p{{ p.priority }}">p{{ p.priority }}</span>{% endif %}
+    {#- #}{% if p.project %}<span class="chip acc">#{{ p.project }}</span>{% endif %}
   {%- else -%}
     <span class="hint">fri 5pm · p1 · #project · every week</span>
   {%- endif -%}
+{%- endmacro %}
+
+{# A quick-add text box: a mirror behind the input's transparent text colors the tokens the parser read (todo.html). #}
+{% macro quickadd_input(placeholder, label) -%}
+<span class="hl"><span class="mirror" aria-hidden="true"></span><input name="q" placeholder="{{ placeholder }}" autocomplete="off" spellcheck="false" aria-label="{{ label }}" required></span>
 {%- endmacro %}
 
 {# A native date input that shows only month and day: with JS the input is hidden behind the
@@ -84,7 +96,7 @@
         <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">{{ datefield("due", t.due, true) }}<button class="btn">set</button></form>
       </div></details>{% endif %}
     {%- for text, cls, href in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}
-      {%- if href %}<a class="go" href="{{ href }}"{% if g.board %} draggable="false"{% endif %}>{{ text }}</a>{% else %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endif %}
+      {%- if href %}<a class="go" href="{{ href }}"{% if g.board %} draggable="false"{% endif %}{% if t.project and text == "#" ~ t.project %} data-project="{{ t.project }}"{% endif %}>{{ text }}</a>{% else %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endif %}
     {%- endfor -%}
   </span>
 </div>

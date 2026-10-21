@@ -139,11 +139,19 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
 .add .plus { color: var(--accent); }
 .add input { flex: 1; min-width: 0; font: inherit; color: var(--hi); background: none; border: 0; outline: 0; padding: 2px 0; }
 .add input::placeholder { color: var(--dim); opacity: 1; }
+/* quick-add box: the input's text is transparent over a mirror that colors the tokens the parser read */
+.hl { display: grid; flex: 1; min-width: 0; }
+.hl > * { grid-area: 1 / 1; min-width: 0; margin: 0; padding: 2px 0; border: 0; font: inherit; line-height: inherit; white-space: pre; }
+.hl > .mirror { overflow: hidden; color: var(--hi); pointer-events: none; }
+.js .hl > input { color: transparent; caret-color: var(--hi); }
+.tok.date, .tok.time { color: var(--c); } .tok.project { color: var(--accent); } .tok.repeat { color: var(--kcal); }
+.tok.p1 { color: var(--warn); } .tok.p2 { color: var(--f); } .tok.p3 { color: var(--p); } .tok.p4 { color: var(--dim); }
 .btn { font: inherit; font-size: 12px; color: var(--bg); background: var(--accent); border: 0; padding: 1px 8px; cursor: pointer; white-space: nowrap; }
 .link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 form.inline { display: inline; }
 .preview { font-size: 12px; color: var(--dim); margin-top: 3px; min-height: 1.55em; overflow-wrap: anywhere; }
 .preview .ti { color: var(--hi); }
+.parsed > .chip:first-child { margin-left: 0; }
 .chip { background: var(--bg2); padding: 0 4px; margin-left: .6ch; white-space: nowrap; }
 .flash { font-size: 12.5px; margin-top: 6px; padding: 0 6px; overflow-wrap: anywhere; }
 .flash .chip { font-size: 12px; }
@@ -161,11 +169,13 @@ form.inline { display: inline; }
 .board::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dim) 45%, transparent); }
 .board:has(details.when[open], details.del[open], .suggest:not([hidden])) { padding-bottom: 14em; }  /* room for an open menu: the scroller clips */
 .board .t[draggable=true] { cursor: grab; }
-.board .t.dragging { opacity: .4; }
+.board .t.dragging { display: none; }  /* the placeholder stands in for it */
 .board .placeholder { border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
 /* columns run the board's full height, bottom space included, so a drop anywhere in the strip lands */
-.col { min-width: 0; padding-bottom: 28px; scroll-snap-align: start; }
+.col { min-width: 0; padding-bottom: 8px; scroll-snap-align: start; }
 .col-head { padding: 0 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col.today .col-head, .col.today .col-head .hi { color: var(--accent); }  /* today stands out */
+.col.today .col-head { box-shadow: inset 0 -1px 0 var(--accent); margin-bottom: 6px; padding-bottom: 4px; }
 .board .rows { display: grid; gap: 8px; }
 .board .rows > .t:nth-child(n), .board .rows > .t + .t { grid-template-columns: 3ch minmax(0, 1fr); padding: 6px 8px; background: none; border: 1px solid var(--dim); }
 .board .rows > .t.editing { border-color: var(--accent); outline: 0; }
@@ -174,8 +184,11 @@ form.inline { display: inline; }
 .dayadd summary { display: inline-block; padding: 2px; font-size: 12px; color: var(--dim); opacity: .75; cursor: pointer; list-style: none; }
 .dayadd summary::-webkit-details-marker { display: none; }
 .dayadd summary:hover { opacity: 1; color: var(--accent); }
-.dayadd[open] summary { display: none; }
+.js .dayadd[open] summary { display: none; }  /* without JS it stays, to close the box */
 .dayadd .add { margin-top: 2px; }
+.dayadd .under { display: flex; justify-content: space-between; align-items: baseline; gap: 1ch; }
+.dayadd .under .link { font-size: 12px; color: var(--dim); }
+html:not(.js) .dayadd .close { display: none; }
 /* the date sits right after the name; a long name wraps before the date and tags get squeezed */
 .t { display: grid; grid-template-columns: 3ch minmax(0, max-content) minmax(max-content, 1fr); column-gap: 1ch; padding: 2px 6px; align-items: baseline; }
 .rows > .t:nth-child(odd) { background: var(--bg2); }
@@ -207,7 +220,7 @@ details.when .pick { display: flex; gap: 1ch; align-items: center; }
 .datefield { position: relative; display: inline-block; }
 .datefield input { font: inherit; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); padding: 0 4px; }
 html:not(.js) .datefield .shown { display: none; }
-.js .datefield { min-width: 11ch; padding: 0 6px; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); cursor: pointer; }
+.js .datefield { padding: 0 6px; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); cursor: pointer; }
 .js .datefield:focus-within { border-color: var(--accent); }
 .js .datefield input { position: absolute; inset: 0; width: 100%; opacity: 0; pointer-events: none; }
 .p1, .t .box.p1 { color: var(--warn); } .p2, .t .box.p2 { color: var(--f); } .p3, .t .box.p3 { color: var(--p); }
@@ -227,6 +240,22 @@ details.del summary::-webkit-details-marker { display: none; }
 details.del[open] summary { color: var(--dim); }
 /* the confirm floats under "delete", so opening it never moves the form */
 details.del .btn { position: absolute; z-index: 2; top: calc(100% + 4px); right: 0; background: var(--warn); }
+
+/* project menu: right-click (long-press on touch) a project for rename and delete */
+a[data-project] { -webkit-touch-callout: none; }
+.ctx { position: fixed; z-index: 5; min-width: 22ch; max-width: min(40ch, calc(100vw - 16px)); padding: 6px 8px; background: var(--bg);
+  border: 1px solid var(--accent); font-size: 12.5px; }
+.ctx-head { color: var(--dim); margin-bottom: 4px; }
+.ctx .item { display: block; font: inherit; color: var(--hi); background: none; border: 0; padding: 1px 0; cursor: pointer; }
+.ctx .item.warn { color: var(--warn); }
+.ctx .item:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ctx form, .ctx[data-mode="rename"] .ctx-main, .ctx[data-mode="delete"] .ctx-main { display: none; }
+.ctx[data-mode="rename"] .ctx-rename { display: flex; gap: 1ch; }
+.ctx[data-mode="delete"] .ctx-delete { display: block; }
+.ctx-rename input { flex: 1; min-width: 0; font: inherit; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); padding: 1px 6px; }
+.ctx-rename input:focus { outline: 0; border-color: var(--accent); }
+.ctx-delete p { margin: 0 0 6px; white-space: normal; }
+.ctx-delete .btn { background: var(--warn); }
 
 /* the edit form in a board card is narrow: one field per line, as on phones */
 .board .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }
@@ -276,8 +305,7 @@ details.del .btn { position: absolute; z-index: 2; top: calc(100% + 4px); right:
   .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }
   .edit .fields > * { display: contents; }
   .edit .fields :is(input, select, .datefield, .combo) { justify-self: start; }
-  .board { grid-auto-columns: calc(100% - 4ch); gap: 10px; scroll-snap-type: x mandatory; }
-  .col { padding-bottom: 16px; }  /* a day at a time; the next peeks in */
+  .board { grid-auto-columns: calc(100% - 4ch); gap: 10px; scroll-snap-type: x mandatory; }  /* a day at a time; the next peeks in */
   svg.chart text { font-size: 20px; }  /* 600-unit-wide charts render at ~0.55x here */
   svg.chart.only-wide { display: none; }
   svg.chart.only-narrow { display: block; }

@@ -25,10 +25,10 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS task (
   prev_due   TEXT,                       -- due before the last tick of a repeat, for undo
   created_at TEXT NOT NULL,
   pos        INTEGER,                    -- order within a day: the last task added or moved there comes last
-  dropped    INTEGER                     -- dragged onto its day: below the rest of that day, in drop order
-)"""
+  day_order  INTEGER                     -- placed by drag and drop: this slot in its day, above unplaced tasks
+);
+CREATE TABLE IF NOT EXISTS project (name TEXT PRIMARY KEY)  -- kept even when no task uses it"""
 NEXT_POS = "(SELECT COALESCE(MAX(COALESCE(pos, id)), 0) + 1 FROM task)"
-NEXT_DROP = "(SELECT COALESCE(MAX(dropped), 0) + 1 FROM task)"
 # The edit form's choices; quick add can also make "every 3 days" and the like.
 RULES = ("every day", "every weekday", "every week", "every 2 weeks", "every month", "every year")
 RULE_RE = re.compile(r"every (day|weekday|week|month|year)|every [1-9]\d? (days|weeks|months)")
@@ -64,11 +64,13 @@ def _db(path: Path):
 def init(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _db(path) as con:
-        con.execute(SCHEMA)
+        con.executescript(SCHEMA)
         have = {row["name"] for row in con.execute("PRAGMA table_info(task)")}
-        for column in ("pos", "dropped"):  # files made before these columns
+        for column in ("pos", "day_order"):  # files made before these columns
             if column not in have:
                 con.execute(f"ALTER TABLE task ADD COLUMN {column} INTEGER")
+        # files made before the project table: every name a task uses becomes a project
+        con.execute("INSERT OR IGNORE INTO project (name) SELECT DISTINCT project FROM task WHERE project IS NOT NULL")
 
 
 def _task(row) -> dict:
@@ -96,8 +98,15 @@ def get(path: Path, task_id: int) -> dict | None:
     return _task(row) if row else None
 
 
+def _keep_project(con, name: str | None) -> None:
+    """A project exists from its first use until it is deleted."""
+    if name:
+        con.execute("INSERT OR IGNORE INTO project (name) VALUES (?)", (name,))
+
+
 def add(path: Path, t: dict, now: dt.datetime) -> int:
     with _db(path) as con:
+        _keep_project(con, t["project"])
         return con.execute(
             "INSERT INTO task (title, project, priority, due, due_time, repeat, created_at, pos)"
             f" VALUES (:title, :project, :priority, :due, :due_time, :repeat, :created_at, {NEXT_POS})",
@@ -106,10 +115,11 @@ def add(path: Path, t: dict, now: dt.datetime) -> int:
 
 def update(path: Path, task_id: int, t: dict) -> None:
     with _db(path) as con:
-        # a new date undoes a drop's place at the bottom of the old day
+        _keep_project(con, t["project"])
+        # a new date drops the place the task was dragged to in its old day
         con.execute("UPDATE task SET title = :title, project = :project, priority = :priority, due = :due,"
                     " due_time = :due_time, repeat = :repeat, prev_due = NULL,"
-                    " dropped = CASE WHEN due IS :due THEN dropped END WHERE id = :id",
+                    " day_order = CASE WHEN due IS :due THEN day_order END WHERE id = :id",
                     {**_params(t), "id": task_id})
 
 
@@ -124,7 +134,7 @@ def tick(path: Path, task_id: int, today: dt.date) -> None:
         row = con.execute("SELECT repeat, due FROM task WHERE id = ?", (task_id,)).fetchone()
         if row and row["repeat"]:
             due = dt.date.fromisoformat(row["due"]) if row["due"] else None
-            con.execute("UPDATE task SET prev_due = due, due = ?, done_on = ?, dropped = NULL WHERE id = ?",
+            con.execute("UPDATE task SET prev_due = due, due = ?, done_on = ?, day_order = NULL WHERE id = ?",
                         (next_due(row["repeat"], due, today).isoformat(), today.isoformat(), task_id))
         elif row:
             con.execute("UPDATE task SET done_on = ? WHERE id = ?", (today.isoformat(), task_id))
@@ -135,18 +145,44 @@ def move(path: Path, task_id: int, due: dt.date | None) -> None:
     goes after the others of the same time and priority. A moved task can no longer undo its last tick."""
     with _db(path) as con:
         if due:
-            con.execute(f"UPDATE task SET due = ?, prev_due = NULL, pos = {NEXT_POS}, dropped = NULL WHERE id = ?",
+            con.execute(f"UPDATE task SET due = ?, prev_due = NULL, pos = {NEXT_POS}, day_order = NULL WHERE id = ?",
                         (due.isoformat(), task_id))
         else:
             con.execute(f"UPDATE task SET due = NULL, due_time = NULL, prev_due = NULL, pos = {NEXT_POS},"
-                        " dropped = NULL WHERE id = ?", (task_id,))
+                        " day_order = NULL WHERE id = ?", (task_id,))
 
 
-def drop(path: Path, task_id: int, due: dt.date) -> None:
-    """Dragged onto a day of the Upcoming board: the task goes below every other task of that day."""
+def drop(path: Path, task_id: int, due: dt.date, order: list[int]) -> None:
+    """Dragged on the Upcoming board onto `due`, in the slot `order` gives: that day's task ids, top to bottom.
+    The day keeps that order, regardless of time and priority; tasks added or moved there later go below it."""
+    if task_id not in order:
+        order = [*order, task_id]
     with _db(path) as con:
-        con.execute(f"UPDATE task SET due = ?, prev_due = NULL, dropped = {NEXT_DROP} WHERE id = ?",
-                    (due.isoformat(), task_id))
+        con.execute("UPDATE task SET due = ?, prev_due = NULL WHERE id = ?", (due.isoformat(), task_id))
+        con.executemany("UPDATE task SET day_order = ? WHERE id = ? AND due = ?",
+                        [(i, tid, due.isoformat()) for i, tid in enumerate(order)])
+
+
+# ---------- projects ----------
+
+def projects(path: Path) -> list[str]:
+    with _db(path) as con:
+        return [row["name"] for row in con.execute("SELECT name FROM project ORDER BY name")]
+
+
+def rename_project(path: Path, old: str, new: str) -> None:
+    """Renames everywhere. Renaming onto an existing project merges the two."""
+    with _db(path) as con:
+        _keep_project(con, new)
+        con.execute("UPDATE task SET project = ? WHERE project = ?", (new, old))
+        con.execute("DELETE FROM project WHERE name = ? AND name != ?", (old, new))
+
+
+def delete_project(path: Path, name: str) -> None:
+    """The project goes; its tasks move to the inbox, never deleted with it."""
+    with _db(path) as con:
+        con.execute("UPDATE task SET project = NULL WHERE project = ?", (name,))
+        con.execute("DELETE FROM project WHERE name = ?", (name,))
 
 
 def untick(path: Path, task_id: int) -> None:
@@ -192,7 +228,8 @@ def add_months(d: dt.date, n: int) -> dt.date:
 def date_options(today: dt.date) -> list[tuple[str, str, dt.date | None]]:
     """The date menu, as (form value, label, date)."""
     weekend = today if today.weekday() >= 5 else next_weekday("sat", today)
-    return [("tomorrow", "tomorrow", today + dt.timedelta(days=1)), ("weekend", "this weekend", weekend),
+    return [("today", "today", today), ("tomorrow", "tomorrow", today + dt.timedelta(days=1)),
+            ("weekend", "this weekend", weekend),
             ("next-week", "next week", next_weekday("mon", today)), ("none", "no date", None)]
 
 
@@ -232,44 +269,52 @@ def project_name(s: str) -> str | None:
 
 def parse(text: str, today: dt.date, due: dt.date | None = None, project: str | None = None) -> dict:
     """Quick-add text to task fields. Tokens are whole words; whatever is left is the title.
-    `due` and `project` are the defaults of the page it was typed on."""
+    `due` and `project` are the defaults of the page it was typed on.
+    "tokens" lists where each recognised token sits in `text`, as (start, end, kind), for highlighting."""
     s = f" {text} "
+    tokens = []
 
-    def take(pattern, value):
-        """Cut the first match out of s if value(match) is not None, and return that value."""
+    def take(pattern, value, kind=None):
+        """Blank out the first match in s if value(match) is not None, and return that value.
+        Blanking keeps every position, so the token spans stay true to `text`."""
         nonlocal s
         m = re.search(pattern, s, re.I)
         v = value(m) if m else None
         if v is not None:
-            s = s[:m.start()] + " " + s[m.end():]
+            g = m.group(0)
+            start, end = m.start() + len(g) - len(g.lstrip()), m.end() - len(g) + len(g.rstrip())
+            tokens.append((start - 1, end - 1, kind or f"p{v}"))
+            s = s[:m.start()] + " " * len(g) + s[m.end():]
         return v
 
     month = lambda name: MONTHS.index(name[:3].lower()) + 1  # noqa: E731
     t = {"due": None}
-    t["repeat"] = (take(r"\severy\s+(day|weekday|week|month|year)\s", lambda m: "every " + m[1].lower())
+    t["repeat"] = (take(r"\severy\s+(day|weekday|week|month|year)\s", lambda m: "every " + m[1].lower(), "repeat")
                    or take(r"\severy\s+([1-9]\d?)\s+(day|week|month)s?\s",
-                           lambda m: f"every {m[1]} {m[2].lower()}s" if m[1] != "1" else f"every {m[2].lower()}")
+                           lambda m: f"every {m[1]} {m[2].lower()}s" if m[1] != "1" else f"every {m[2].lower()}",
+                           "repeat")
                    or take(r"\s(daily|weekly|monthly|yearly)\s",
                            lambda m: "every " + {"daily": "day", "weekly": "week", "monthly": "month",
-                                                 "yearly": "year"}[m[1].lower()]))
-    if not t["repeat"] and (day := take(rf"\severy\s+{WD}\s", lambda m: m[1])):
+                                                 "yearly": "year"}[m[1].lower()], "repeat"))
+    if not t["repeat"] and (day := take(rf"\severy\s+{WD}\s", lambda m: m[1], "repeat")):
         t["repeat"], t["due"] = "every week", next_weekday(day, today, include_today=True)
-    t["due"] = (take(r"\s(today|tomorrow)\s", lambda m: today + dt.timedelta(days=m[1].lower() == "tomorrow"))
-                or take(r"\sin\s+(\d{1,3})\s+days?\s", lambda m: today + dt.timedelta(days=int(m[1])))
-                or take(r"\snext\s+week\s", lambda m: next_weekday("mon", today))
-                or take(r"\s(\d{4}-\d\d-\d\d)\s", lambda m: iso_date(m[1]))
-                or take(rf"\s{MN}\s+(\d{{1,2}})\s", lambda m: on_date(today, month(m[1]), int(m[2])))
-                or take(rf"\s(\d{{1,2}})\s+{MN}\s", lambda m: on_date(today, month(m[2]), int(m[1])))
-                or take(r"\s(\d{1,2})/(\d{1,2})\s", lambda m: on_date(today, int(m[1]), int(m[2])))
-                or take(rf"\s{WD}\s", lambda m: next_weekday(m[1], today))
+    t["due"] = (take(r"\s(today|tomorrow)\s", lambda m: today + dt.timedelta(days=m[1].lower() == "tomorrow"), "date")
+                or take(r"\sin\s+(\d{1,3})\s+days?\s", lambda m: today + dt.timedelta(days=int(m[1])), "date")
+                or take(r"\snext\s+week\s", lambda m: next_weekday("mon", today), "date")
+                or take(r"\s(\d{4}-\d\d-\d\d)\s", lambda m: iso_date(m[1]), "date")
+                or take(rf"\s{MN}\s+(\d{{1,2}})\s", lambda m: on_date(today, month(m[1]), int(m[2])), "date")
+                or take(rf"\s(\d{{1,2}})\s+{MN}\s", lambda m: on_date(today, month(m[2]), int(m[1])), "date")
+                or take(r"\s(\d{1,2})/(\d{1,2})\s", lambda m: on_date(today, int(m[1]), int(m[2])), "date")
+                or take(rf"\s{WD}\s", lambda m: next_weekday(m[1], today), "date")
                 or t["due"])
     t["due_time"] = (take(r"\s(\d{1,2})(?::([0-5]\d))?\s?(am|pm)\s",
                           lambda m: f"{int(m[1]) % 12 + 12 * (m[3].lower() == 'pm'):02}:{m[2] or '00'}"
-                          if 1 <= int(m[1]) <= 12 else None)
-                     or take(r"\s([01]?\d|2[0-3]):([0-5]\d)\s", lambda m: f"{int(m[1]):02}:{m[2]}"))
-    t["priority"] = take(r"\sp([1-4])\s", lambda m: int(m[1])) or 4
-    t["project"] = take(r"\s#([\w-]+)\s", lambda m: m[1].lower()) or project
+                          if 1 <= int(m[1]) <= 12 else None, "time")
+                     or take(r"\s([01]?\d|2[0-3]):([0-5]\d)\s", lambda m: f"{int(m[1]):02}:{m[2]}", "time"))
+    t["priority"] = take(r"\sp([1-4])\s", lambda m: int(m[1])) or 4  # kind p1..p4, for its color
+    t["project"] = take(r"\s#([\w-]+)\s", lambda m: m[1].lower(), "project") or project
     t["title"] = " ".join(s.split())
+    t["tokens"] = sorted(tokens)
     if t["repeat"] and not t["due"]:
         t["due"] = first_due(t["repeat"], today)
     t["due"] = t["due"] or due or (today if t["due_time"] else None)  # a time alone means the page's day, else today
@@ -299,10 +344,10 @@ def is_open(t: dict) -> bool:
 
 
 def _sort_key(t: dict):
-    """Within a day: timed tasks by time, then by priority, then in the order they were added or moved there;
-    tasks dragged onto the day come after all of those, in the order they were dropped."""
-    return (t["due"] or dt.date.max, t.get("dropped") or 0, t["due_time"] or "99", t["priority"],
-            t.get("pos") or t["id"])
+    """Within a day: tasks placed by drag and drop in their slots first; then the rest, timed tasks by time,
+    then by priority, then in the order they were added or moved there."""
+    return (t["due"] or dt.date.max, t.get("day_order") is None, t.get("day_order") or 0, t["due_time"] or "99",
+            t["priority"], t.get("pos") or t["id"])
 
 
 def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None, board=False):
@@ -353,12 +398,13 @@ def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None
             _group("done", [t for t in done if member(t)], done=True)]
 
 
-def counts(ts: list[dict], today: dt.date) -> dict:
-    """Nav numbers: open tasks in the inbox, due today or earlier, and per project."""
+def counts(ts: list[dict], today: dt.date, names: list[str]) -> dict:
+    """Nav numbers: open tasks in the inbox, due today or earlier, and per project (every project, even empty)."""
     open_ = [t for t in ts if is_open(t)]
+    per = Counter(t["project"] for t in open_ if t["project"])
     return {"inbox": sum(not t["project"] for t in open_),
             "today": sum(bool(t["due"]) and t["due"] <= today for t in open_),
-            "projects": sorted(Counter(t["project"] for t in open_ if t["project"]).items())}
+            "projects": [(name, per[name]) for name in sorted(set(names) | set(per))]}
 
 
 def day_label(d: dt.date, today: dt.date, long: bool = False) -> str:

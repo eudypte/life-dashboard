@@ -184,7 +184,8 @@ def todo_render(request: Request, page: str, project: str | None = None, edit: i
     if ticked and any(ticked["id"] == t["id"] for g in groups if g["done"] for t in g["rows"]):
         ticked = None  # still on the page, struck through in the done group
     return render(
-        request, "todo.html", "todo", page=page, project=project, groups=groups, counts=todo.counts(ts, today),
+        request, "todo.html", "todo", page=page, project=project, groups=groups,
+        counts=todo.counts(ts, today, todo.projects(TODO_DB)),
         here="/todo/project/" + quote(project, safe="") if project else f"/todo/upcoming/{week_view['start']}"
         if week else {"today": "/todo"}.get(page, "/todo/" + page), week=week_view,
         edit=edit, added=todo.get(TODO_DB, added) if added else None, ticked=ticked, rules=todo.RULES,
@@ -193,10 +194,10 @@ def todo_render(request: Request, page: str, project: str | None = None, edit: i
 
 
 @app.get("/todo/parse")
-def todo_parse(request: Request, q: str = "", page: str = "", project: str = ""):
-    """The quick-add preview line, as an HTML fragment."""
+def todo_parse(request: Request, q: str = "", page: str = "", project: str = "", due: str = ""):
+    """The quick-add preview line, as an HTML fragment that also carries the token spans to highlight."""
     today = data.logical_today(CFG)
-    p = todo.parse(q, today, today if page == "today" else None, project or None)
+    p = todo.parse(q, today, todo.iso_date(due) or (today if page == "today" else None), project or None)
     return templates.TemplateResponse(request, "_todo_preview.html", {"p": p, "today": today})
 
 
@@ -268,14 +269,36 @@ async def todo_edit(request: Request, task_id: int):
 @app.post("/todo/{task_id}/due")
 async def todo_due(request: Request, task_id: int):
     """The date menu: one of its options ("none" clears the date) or a picked ISO date.
-    drop=1: dragged onto a day of the Upcoming board."""
+    drop=1: dragged on the Upcoming board onto that day, with the day's new order as ids in `order`."""
     f = await form(request)
     options = {value: d for value, _, d in todo.date_options(data.logical_today(CFG))}
     if f.get("due") in options:
         todo.move(TODO_DB, task_id, options[f["due"]])
-    elif due := todo.iso_date(f.get("due", "")):
-        (todo.drop if f.get("drop") else todo.move)(TODO_DB, task_id, due)
+    elif (due := todo.iso_date(f.get("due", ""))) and f.get("drop"):
+        todo.drop(TODO_DB, task_id, due, [int(i) for i in f.get("order", "").split(",") if i.isdigit()])
+    elif due:
+        todo.move(TODO_DB, task_id, due)
     return back(f, task_id=task_id)
+
+
+@app.post("/todo/project/{name}/rename")
+async def todo_project_rename(request: Request, name: str):
+    f = await form(request)
+    if (new := todo.project_name(f.get("name", ""))) and new != name:
+        todo.rename_project(TODO_DB, name, new)
+        if f.get("next") == "/todo/project/" + quote(name, safe=""):  # was on its page: follow the new name
+            f["next"] = "/todo/project/" + quote(new, safe="")
+    return back(f)
+
+
+@app.post("/todo/project/{name}/delete")
+async def todo_project_delete(request: Request, name: str):
+    """Its tasks move to the inbox."""
+    f = await form(request)
+    todo.delete_project(TODO_DB, name)
+    if f.get("next") == "/todo/project/" + quote(name, safe=""):
+        f["next"] = "/todo/inbox"
+    return back(f)
 
 
 @app.post("/todo/{task_id}/delete")

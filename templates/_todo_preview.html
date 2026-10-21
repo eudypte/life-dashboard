@@ -1,1 +1,1 @@
-{% from "_ui.html" import parsed %}{{ parsed(p, today) }}
+{% from "_ui.html" import parsed %}<span class="parsed" data-tokens='{{ p.tokens | tojson }}'>{{ parsed(p, today, false) }}</span>

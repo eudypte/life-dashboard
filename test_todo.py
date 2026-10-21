@@ -19,6 +19,13 @@ class ParseTest(unittest.TestCase):
     def p(self, text, **defaults):
         return todo.parse(text, T, **defaults)
 
+    def test_token_spans_for_highlighting(self):
+        text = "submit lab report thu 5pm p1 #School every week"
+        t = self.p(text)
+        self.assertEqual([(text[a:b], kind) for a, b, kind in t["tokens"]],
+                         [("thu", "date"), ("5pm", "time"), ("p1", "p1"), ("#School", "project"), ("every week", "repeat")])
+        self.assertEqual(self.p("x  in 3 days  9:30 am")["tokens"], [(3, 12, "date"), (14, 21, "time")])
+
     def test_tokens_come_out_and_the_rest_is_the_title(self):
         t = self.p("submit lab report thu 5pm p1 #School")
         self.assertEqual((t["title"], t["due"], t["due_time"], t["priority"], t["project"], t["repeat"]),
@@ -106,7 +113,7 @@ class StoreTest(unittest.TestCase):
         self.assertEqual({t["id"]: (t["due"], t["done_on"]) for t in ts}, {a: (None, T), r: (d(10, 27), T)})
         g = {x["label"]: [t["id"] for t in x["rows"]] for x in todo.groups(ts, T, "today")}
         self.assertEqual((g["today"], g["done"]), ([], [a, r]))
-        self.assertEqual(todo.counts(ts, T), {"inbox": 0, "today": 0, "projects": [("home", 1)]})
+        self.assertEqual(todo.counts(ts, T, todo.projects(self.db)), {"inbox": 0, "today": 0, "projects": [("home", 1)]})
         # tomorrow only the repeat is left; the finished task is gone
         self.assertEqual([t["id"] for t in todo.tasks(self.db, d(10, 21))], [r])
         todo.untick(self.db, r)
@@ -133,19 +140,37 @@ class StoreTest(unittest.TestCase):
         day = todo.groups(todo.tasks(self.db, T), T, "upcoming")[3]
         self.assertEqual([t["title"] for t in day["rows"]], ["a", "c", "b"])
 
-    def test_a_dropped_task_goes_below_the_whole_day(self):
-        self.add("standup thu 9am"), self.add("urgent thing thu p1")
+    def test_drag_and_drop_order(self):
+        early, p1 = self.add("standup thu 9am"), self.add("urgent thing thu p1")
         a, b = self.add("a today p1"), self.add("b today 8am")
-        todo.drop(self.db, a, d(10, 22))
-        todo.drop(self.db, b, d(10, 22))  # an earlier time and a higher priority still go last
         day = lambda: [t["title"] for t in todo.groups(todo.tasks(self.db, T), T, "upcoming")[3]["rows"]]
+        self.assertEqual(day(), ["standup", "urgent thing"])  # time, then priority
+        todo.drop(self.db, a, d(10, 22), [early, p1, a])  # dropped at the bottom
+        todo.drop(self.db, b, d(10, 22), [early, p1, a, b])  # an earlier time still stays where it was dropped
         self.assertEqual(day(), ["standup", "urgent thing", "a", "b"])
-        todo.move(self.db, b, d(10, 22))  # the date menu puts it back in the normal order: 8am comes first
+        todo.drop(self.db, b, d(10, 22), [b, early, p1, a])  # reordered within the day
         self.assertEqual(day(), ["b", "standup", "urgent thing", "a"])
-        todo.update(self.db, a, {**todo.get(self.db, a), "title": "a2"})  # an edit on the same day keeps the drop
-        self.assertEqual(day()[-1], "a2")
-        todo.update(self.db, a, {**todo.get(self.db, a), "due": d(10, 23)})  # a new date clears it
-        self.assertIsNone(todo.get(self.db, a)["dropped"])
+        later = self.add("later thu 7am p1")  # added later: below the placed ones, whatever its time
+        self.assertEqual(day()[-1], "later")
+        todo.update(self.db, b, {**todo.get(self.db, b), "title": "b2"})  # an edit on the same day keeps the slot
+        self.assertEqual(day()[0], "b2")
+        todo.move(self.db, b, d(10, 23))  # the date menu clears it
+        self.assertIsNone(todo.get(self.db, b)["day_order"])
+        self.assertNotIn("b2", day())
+
+    def test_projects_persist_rename_and_delete(self):
+        a, b = self.add("a #home"), self.add("b #home")
+        todo.tick(self.db, a, T)
+        todo.tick(self.db, b, T)
+        self.assertEqual(todo.projects(self.db), ["home"])  # still there with no open task
+        self.assertEqual(todo.counts(todo.tasks(self.db, d(10, 21)), T, todo.projects(self.db))["projects"], [("home", 0)])
+        c = self.add("c #code")
+        todo.rename_project(self.db, "home", "house")
+        self.assertEqual((todo.projects(self.db), todo.get(self.db, a)["project"]), (["code", "house"], "house"))
+        todo.rename_project(self.db, "code", "house")  # onto an existing name: merged
+        self.assertEqual((todo.projects(self.db), todo.get(self.db, c)["project"]), (["house"], "house"))
+        todo.delete_project(self.db, "house")  # tasks move to the inbox, never deleted
+        self.assertEqual((todo.projects(self.db), todo.get(self.db, c)["project"]), ([], None))
 
     def test_old_files_gain_the_new_columns(self):
         old = Path(self.tmp.name) / "old.sqlite"
@@ -156,11 +181,16 @@ class StoreTest(unittest.TestCase):
         con.execute("INSERT INTO task (title, created_at) VALUES ('x', '2026-10-01')")
         con.commit()
         con.close()
+        con = sqlite3.connect(old)
+        con.execute("UPDATE task SET project = 'home'")
+        con.commit()
+        con.close()
         todo.init(old)
         self.assertEqual([t["title"] for t in todo.tasks(old, T)], ["x"])
+        self.assertEqual(todo.projects(old), ["home"])  # project names copied into the new table
         todo.move(old, 1, T)
-        todo.drop(old, 1, T)
-        self.assertEqual((todo.get(old, 1)["pos"], todo.get(old, 1)["dropped"]), (2, 1))
+        todo.drop(old, 1, T, [1])
+        self.assertEqual((todo.get(old, 1)["pos"], todo.get(old, 1)["day_order"]), (2, 0))
 
     def test_update_and_delete(self):
         a = self.add("x tomorrow")
@@ -191,9 +221,10 @@ class DateOptionsTest(unittest.TestCase):
         for today, dates in cases.items():
             with self.subTest(today=today):
                 opts = todo.date_options(today)
-                self.assertEqual(tuple(x[2] for x in opts[:3]), dates)
-                self.assertEqual(opts[2][2], todo.parse("x next week", today)["due"])
-                self.assertEqual(opts[3], ("none", "no date", None))
+                self.assertEqual(opts[0], ("today", "today", today))
+                self.assertEqual(tuple(x[2] for x in opts[1:4]), dates)
+                self.assertEqual(opts[3][2], todo.parse("x next week", today)["due"])
+                self.assertEqual(opts[4], ("none", "no date", None))
 
 
 class ViewTest(unittest.TestCase):
