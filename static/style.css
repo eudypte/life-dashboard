@@ -336,3 +336,19 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
   svg.chart.only-wide { display: none; }
   svg.chart.only-narrow { display: block; }
 }
+
+/* Hover = reverse video (data-hover "full", the default): the element's color becomes the background, the text takes the page background.
+   data-hover="current" (nav select) keeps the underline hover above. Stays last; :root lifts it over .nav a[aria-current] and friends. */
+:where(a, details.when summary, details.when .item, .ctx .item) { --lc: var(--hi); }
+.entry .src a, .dayadd summary, .suggest li, details.when .item.cur { --lc: var(--accent); }
+.ctx .item.warn { --lc: var(--warn); }
+:root:not([data-hover="current"]) :is(a, details.when summary, details.when .item, .ctx .item, .dayadd summary, .suggest li):hover,
+:root:not([data-hover="current"]) .suggest li.on { color: var(--bg); background: var(--lc); text-decoration: none; }
+:root:not([data-hover="current"]) :is(a, details.when .item):hover > :is(.n, .dim),
+:root:not([data-hover="current"]) .suggest li:is(:hover, .on)::before { color: inherit; }  /* dim parts would vanish */
+:root:not([data-hover="current"]) :is(details.when .item, .ctx .item):hover { margin: 0 -4px; padding-inline: 4px; }  /* a little room around the text */
+:root:not([data-hover="current"]) .nav a:hover { margin: 0 -6px; padding: 1px 6px; }  /* the same block as the current row */
+:root:not([data-hover="current"]) .nav .sub a:hover { padding-left: calc(2ch + 6px); }
+@media (max-width: 720px) {
+  :root:not([data-hover="current"]) :is(.nav a, .nav .sub a):hover { margin: 0 -3px; padding: 1px 3px; }  /* inline links: room without shifting the row */
+}

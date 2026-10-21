@@ -8,7 +8,7 @@
 <link rel="icon" href="data:,">
 <title>{% block title %}Life Dashboard{% endblock %}</title>
 <link rel="stylesheet" href="/static/style.css?v={{ css_version }}">
-<script>document.documentElement.classList.add("js"); try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "solarized-dark"; } catch (e) {}</script>
+<script>document.documentElement.classList.add("js"); try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "solarized-dark"; document.documentElement.dataset.hover = localStorage.getItem("hover") || "full"; } catch (e) {}</script>
 </head>
 <body>
 {% block body %}
@@ -38,6 +38,10 @@
       <select id="theme">
         {% for id, name in themes.items() %}<option value="{{ id }}">{{ name }}</option>{% endfor %}
       </select>
+      <label class="dim" for="hover">hover</label>
+      <select id="hover">
+        <option value="full">full block</option><option value="current">underline</option>
+      </select>
     </fieldset>
   </nav>
   <main class="main">{% block main %}{% endblock %}</main>
@@ -47,12 +51,14 @@
   {%- if signed_in %} · <form class="inline" method="post" action="/logout"><button class="link">log out</button></form>{% endif %}</footer>
 
 <script>
-  const sel = document.getElementById("theme");
-  sel.value = document.documentElement.dataset.theme;
-  sel.addEventListener("change", () => {
-    document.documentElement.dataset.theme = sel.value;
-    try { localStorage.setItem("theme", sel.value); } catch (e) {}
-  });
+  for (const key of ["theme", "hover"]) {
+    const sel = document.getElementById(key);
+    if (document.documentElement.dataset[key]) sel.value = document.documentElement.dataset[key];
+    sel.addEventListener("change", () => {
+      document.documentElement.dataset[key] = sel.value;
+      try { localStorage.setItem(key, sel.value); } catch (e) {}
+    });
+  }
 </script>
 {% endblock %}
 </body>
