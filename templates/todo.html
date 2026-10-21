@@ -135,10 +135,21 @@
     if (input.closest(".when") && /^[1-9]\d{3}-/.test(input.value)) input.form.requestSubmit();
   });
 
-  // Upcoming board: drag a card onto another day's column to move it there. Mouse only;
-  // on touch screens the date menu moves tasks.
+  // Upcoming board: drag a card onto another day's column to move it there. A dashed placeholder the size
+  // of the card shows where it will land, by the server's order within a day: time, then priority, then
+  // the last one moved there last (todo._sort_key). Mouse only; on touch screens the date menu moves tasks.
   let dragged = null;
-  const clearDrop = keep => { for (const c of document.querySelectorAll(".col.drop")) if (c !== keep) c.classList.remove("drop"); };
+  const ph = Object.assign(document.createElement("div"), { className: "placeholder" });
+  function place(col) {
+    if (!col) return ph.remove();
+    const time = dragged.dataset.time, pri = +dragged.dataset.pri, rows = col.querySelector(".rows");
+    const later = [...col.querySelectorAll(".rows > .t")]
+      .find(c => c.dataset.time > time || (c.dataset.time === time && +c.dataset.pri > pri));
+    ph.style.height = `${dragged.offsetHeight}px`;
+    if (later) later.before(ph);
+    else if (rows) rows.append(ph);
+    else col.querySelector(".dayadd").before(ph);
+  }
   document.addEventListener("dragstart", e => {
     dragged = e.target.closest?.(".board .t[draggable=true]");
     if (!dragged) return;
@@ -147,27 +158,26 @@
     e.dataTransfer.setData("text/plain", dragged.querySelector(".name").textContent);
   });
   document.addEventListener("dragover", e => {
-    const col = dragged && e.target.closest?.(".col[data-day]");
-    clearDrop(col);
-    if (!col) return;
-    e.preventDefault();  // a day column accepts the drop; overdue does not
-    col.classList.add("drop");
+    if (!dragged) return;
+    const col = e.target.closest?.(".col[data-day]");
+    const target = col && col !== dragged.closest(".col") ? col : null;  // another day; overdue takes no drops
+    if (target !== ph.closest(".col")) place(target);
+    if (target) e.preventDefault();
   });
   document.addEventListener("drop", e => {
-    const col = dragged && e.target.closest?.(".col[data-day]"), card = dragged;
+    const col = dragged && ph.closest(".col"), card = dragged;
     dragged = null;
-    clearDrop();
+    ph.remove();
     if (!col) return;
     e.preventDefault();
     card.classList.remove("dragging");
-    if (card.closest(".col") === col) return;
     load(`/todo/${card.id.slice(1)}/due`, { method: "POST", body: new URLSearchParams({ due: col.dataset.day, next: q.form.next.value }) })
       .catch(() => location.reload());
   });
   document.addEventListener("dragend", () => {
     dragged?.classList.remove("dragging");
     dragged = null;
-    clearDrop();
+    ph.remove();
   });
 
   // Project field in the edit form: themed suggestions in place of the browser's datalist dropdown,

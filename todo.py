@@ -23,8 +23,10 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS task (
   repeat     TEXT,                       -- a RULE_RE rule, e.g. "every week"
   done_on    TEXT,                       -- ISO date of the last tick
   prev_due   TEXT,                       -- due before the last tick of a repeat, for undo
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  pos        INTEGER                     -- order within a day: the last task added or moved there comes last
 )"""
+NEXT_POS = "(SELECT COALESCE(MAX(COALESCE(pos, id)), 0) + 1 FROM task)"
 # The edit form's choices; quick add can also make "every 3 days" and the like.
 RULES = ("every day", "every weekday", "every week", "every 2 weeks", "every month", "every year")
 RULE_RE = re.compile(r"every (day|weekday|week|month|year)|every [1-9]\d? (days|weeks|months)")
@@ -61,6 +63,8 @@ def init(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _db(path) as con:
         con.execute(SCHEMA)
+        if "pos" not in {row["name"] for row in con.execute("PRAGMA table_info(task)")}:  # older files
+            con.execute("ALTER TABLE task ADD COLUMN pos INTEGER")
 
 
 def _task(row) -> dict:
@@ -91,8 +95,8 @@ def get(path: Path, task_id: int) -> dict | None:
 def add(path: Path, t: dict, now: dt.datetime) -> int:
     with _db(path) as con:
         return con.execute(
-            "INSERT INTO task (title, project, priority, due, due_time, repeat, created_at)"
-            " VALUES (:title, :project, :priority, :due, :due_time, :repeat, :created_at)",
+            "INSERT INTO task (title, project, priority, due, due_time, repeat, created_at, pos)"
+            f" VALUES (:title, :project, :priority, :due, :due_time, :repeat, :created_at, {NEXT_POS})",
             {**_params(t), "created_at": now.isoformat(timespec="seconds")}).lastrowid
 
 
@@ -121,13 +125,15 @@ def tick(path: Path, task_id: int, today: dt.date) -> None:
 
 
 def move(path: Path, task_id: int, due: dt.date | None) -> None:
-    """New due date, keeping time and repeat; no date also drops the time.
+    """New due date, keeping time and repeat; no date also drops the time. The task goes last in its new day.
     A moved task can no longer undo its last tick."""
     with _db(path) as con:
         if due:
-            con.execute("UPDATE task SET due = ?, prev_due = NULL WHERE id = ?", (due.isoformat(), task_id))
+            con.execute(f"UPDATE task SET due = ?, prev_due = NULL, pos = {NEXT_POS} WHERE id = ?",
+                        (due.isoformat(), task_id))
         else:
-            con.execute("UPDATE task SET due = NULL, due_time = NULL, prev_due = NULL WHERE id = ?", (task_id,))
+            con.execute(f"UPDATE task SET due = NULL, due_time = NULL, prev_due = NULL, pos = {NEXT_POS} WHERE id = ?",
+                        (task_id,))
 
 
 def untick(path: Path, task_id: int) -> None:
@@ -280,7 +286,9 @@ def is_open(t: dict) -> bool:
 
 
 def _sort_key(t: dict):
-    return t["due"] or dt.date.max, t["due_time"] or "99", t["priority"], t["id"]
+    """Within a day: timed tasks by time, then by priority, then in the order they were added or moved there.
+    The Upcoming board's drop placeholder uses the same rule (todo.html)."""
+    return t["due"] or dt.date.max, t["due_time"] or "99", t["priority"], t.get("pos") or t["id"]
 
 
 def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None, board=False):

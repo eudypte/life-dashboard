@@ -67,7 +67,8 @@
   </form>
 </div>
 {%- else %}
-<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}"{% if g.board %} draggable="true"{% endif %}>
+<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}"
+  {%- if g.board %} draggable="true" data-time="{{ t.due_time or '99' }}" data-pri="{{ t.priority }}"{% endif %}>
   <form class="tick" method="post" action="/todo/{{ t.id }}/done"><input type="hidden" name="next" value="{{ here }}">
     {%- if g.done %}<input type="hidden" name="undo" value="1">{% endif -%}
     <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>

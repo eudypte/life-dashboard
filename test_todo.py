@@ -1,6 +1,7 @@
 """Checks for the todo parser, repeats and storage. Run: .venv/bin/python -m unittest"""
 import datetime as dt
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -122,6 +123,29 @@ class StoreTest(unittest.TestCase):
         todo.move(self.db, r, None)  # no date also drops the time
         t = todo.get(self.db, r)
         self.assertEqual((t["due"], t["due_time"], t["repeat"]), (None, None, "every weekday"))
+
+    def test_a_moved_task_goes_last_in_its_new_day(self):
+        a, b = self.add("a tomorrow"), self.add("b tomorrow")
+        c = self.add("c today")  # newest id, but moved last
+        todo.move(self.db, a, d(10, 22))
+        todo.move(self.db, c, d(10, 22))
+        todo.move(self.db, b, d(10, 22))
+        day = todo.groups(todo.tasks(self.db, T), T, "upcoming")[3]
+        self.assertEqual([t["title"] for t in day["rows"]], ["a", "c", "b"])
+
+    def test_old_files_gain_the_pos_column(self):
+        old = Path(self.tmp.name) / "old.sqlite"
+        con = sqlite3.connect(old)
+        con.execute("CREATE TABLE task (id INTEGER PRIMARY KEY, title TEXT NOT NULL, project TEXT,"  # before pos
+                    " priority INTEGER NOT NULL DEFAULT 4, due TEXT, due_time TEXT, repeat TEXT, done_on TEXT,"
+                    " prev_due TEXT, created_at TEXT NOT NULL)")
+        con.execute("INSERT INTO task (title, created_at) VALUES ('x', '2026-10-01')")
+        con.commit()
+        con.close()
+        todo.init(old)
+        self.assertEqual([t["title"] for t in todo.tasks(old, T)], ["x"])
+        todo.move(old, 1, T)
+        self.assertEqual(todo.get(old, 1)["pos"], 2)
 
     def test_update_and_delete(self):
         a = self.add("x tomorrow")
