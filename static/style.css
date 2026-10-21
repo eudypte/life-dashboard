@@ -159,6 +159,19 @@ form.inline { display: inline; }
 .t .meta { white-space: nowrap; font-size: 12px; color: var(--dim); }
 .t.done .name { color: var(--dim); text-decoration: line-through; }
 .t.done .box { color: var(--kcal); }
+.t.inline { grid-template-columns: 3ch auto minmax(0, 1fr); }  /* inbox: date right after the name */
+.t.inline .meta { white-space: normal; }
+details.when { display: inline-block; position: relative; }
+details.when summary { display: inline; cursor: pointer; list-style: none; }
+details.when summary::-webkit-details-marker { display: none; }
+details.when summary:hover, details.when[open] summary { text-decoration: underline; text-underline-offset: 3px; }
+details.when summary.faint { opacity: .55; }
+details.when .menu { position: absolute; z-index: 2; top: calc(100% + 2px); right: 0; display: grid; gap: 4px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--accent); text-align: left; white-space: nowrap; }
+.t.inline details.when .menu { left: 0; right: auto; }
+details.when .item { font: inherit; color: var(--hi); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+details.when .item:hover { text-decoration: underline; text-underline-offset: 3px; }
+details.when .pick { display: flex; gap: 1ch; align-items: center; }
+details.when [type=date] { font: inherit; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); padding: 0 4px; }
 .p1, .t .box.p1 { color: var(--warn); } .p2, .t .box.p2 { color: var(--f); } .p3, .t .box.p3 { color: var(--p); }
 .t.editing { grid-template-columns: 3ch minmax(0, 1fr); background: var(--bg2) !important; outline: 1px solid var(--accent); outline-offset: -1px; padding: 6px 6px 8px; }
 .edit { display: grid; gap: 6px; min-width: 0; }
@@ -212,6 +225,7 @@ details.del .btn { background: var(--warn); margin-left: 1ch; }
   .rows > .t:nth-child(odd) { background: none; }
   .rows > .t + .t { border-top: 1px dashed var(--bg2); }
   .t .meta { grid-column: 2 / -1; white-space: normal; }
+  details.when .menu { left: 0; right: auto; }
   .t.editing { padding: 6px; }
   .grp, .flash { padding: 0 2px; }
   .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }

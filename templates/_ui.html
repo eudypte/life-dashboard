@@ -36,7 +36,7 @@
   {%- endif -%}
 {%- endmacro %}
 
-{% macro task_row(t, g, here, edit, today, rules, show_project) -%}
+{% macro task_row(t, g, here, edit, today, rules, show_project, inline=false) -%}
 {%- set pri = " p" ~ t.priority if t.priority < 4 and not g.done else "" %}
 {%- if edit == t.id %}
 <div class="t editing" id="t{{ t.id }}">
@@ -59,12 +59,20 @@
   </form>
 </div>
 {%- else %}
-<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}">
+<div class="t{{ ' done' if g.done }}{{ ' inline' if inline }}" id="t{{ t.id }}">
   <form class="tick" method="post" action="/todo/{{ t.id }}/done"><input type="hidden" name="next" value="{{ here }}">
     {%- if g.done %}<input type="hidden" name="undo" value="1">{% endif -%}
     <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>
   <a class="name" href="{{ here }}?edit={{ t.id }}#t{{ t.id }}">{{ t.title }}</a>
-  <span class="meta">{% for text, cls in t | task_meta(g, today, show_project) %}{% if not loop.first %} · {% endif %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endfor %}</span>
+  <span class="meta">
+    {%- set w = t | task_when(g, today) %}
+    {%- if w %}<details class="when"><summary{% if w[1] %} class="{{ w[1] }}"{% endif %} title="move to another day">{{ w[0] }}</summary>
+      <div class="menu">
+        <form method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}"><button class="item" name="due" value="tomorrow">tomorrow</button></form>
+        <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}"><input type="date" name="due" value="{{ t.due or '' }}" aria-label="due date" required><button class="btn">set</button></form>
+      </div></details>{% endif %}
+    {%- for text, cls in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endfor -%}
+  </span>
 </div>
 {%- endif %}
 {%- endmacro %}

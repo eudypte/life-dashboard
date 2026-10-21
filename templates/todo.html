@@ -25,16 +25,18 @@
     <button class="btn">add ⏎</button>
   </form>
   <div class="preview" aria-live="polite">{{ parsed(none, today) }}</div>
+  <div class="flashes">
   {% if added %}<div class="flash"><span class="dim">added</span> {{ parsed(added, today) }}</div>{% endif %}
   {% if ticked %}
   <div class="flash"><span class="kcal">✓</span> <span class="hi">{{ ticked.title }}</span>
     {%- if ticked.repeat %} <span class="dim">· next {{ ticked.due | day_label(today, true) }}</span>{% endif %} ·
     <form class="inline" method="post" action="/todo/{{ ticked.id }}/done"><input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="undo" value="1"><button class="link">undo</button></form></div>
   {% endif %}
+  </div>
   <div class="tasks">
   {% for g in groups if g.rows or g.keep %}
     <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">· {{ g.note }}</span>{% endif %} <span class="dim">· {{ g.rows | length or "nothing" }}</span></div>
-    {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project") }}{% endfor %}</div>{% endif %}
+    {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project", page == "inbox") }}{% endfor %}</div>{% endif %}
   {% else %}
     <p class="empty">nothing here</p>
   {% endfor %}
@@ -43,7 +45,7 @@
 <datalist id="projects">{% for name, n in counts.projects %}<option value="{{ name }}">{% endfor %}</datalist>
 <script>
   // Live preview of what quick add reads. The form works without it.
-  const q = document.querySelector(".add [name=q]"), out = document.querySelector(".add + .preview");
+  const q = document.querySelector(".add [name=q]"), out = document.querySelector(".add + .preview"), hint = out.innerHTML;
   let timer;
   q.addEventListener("input", () => {
     clearTimeout(timer);
@@ -52,6 +54,40 @@
       const r = await fetch("/todo/parse?" + new URLSearchParams({ q: sent, page: q.form.page.value, project: q.form.project.value }));
       if (r.ok && q.value === sent) out.innerHTML = await r.text();
     }, 120);
+  });
+
+  // In place: send forms and row links with fetch, then swap in the parts of the page they change.
+  // On any failure, reload to show what the server has.
+  async function load(url, init) {
+    const r = await fetch(url, init);
+    if (!r.ok) throw new Error(r.status);
+    const page = new DOMParser().parseFromString(await r.text(), "text/html");
+    const row = document.activeElement?.closest(".t")?.id;
+    for (const sel of [".flashes", ".tasks", ".nav .sub", "#projects"]) document.querySelector(sel).replaceWith(page.querySelector(sel));
+    if (row) document.querySelector(`#${row} .box`)?.focus();
+  }
+  document.addEventListener("submit", e => {
+    const form = e.target, by = e.submitter;
+    if (!form.closest(".main")) return;
+    e.preventDefault();
+    const url = by?.hasAttribute("formaction") ? by.formAction : form.action;
+    load(url, { method: "POST", body: new URLSearchParams(new FormData(form, by)) }).then(() => {
+      if (form.matches(".add")) { q.value = ""; out.innerHTML = hint; q.focus(); }
+    }, () => location.reload());
+  });
+  document.addEventListener("click", e => {
+    for (const d of document.querySelectorAll("details.when[open]")) if (!d.contains(e.target)) d.open = false;
+    const a = e.target.closest(".tasks a[href]");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    load(a.href).then(() => document.querySelector(".edit .title")?.focus(), () => { location.href = a.href; });
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") for (const d of document.querySelectorAll("details.when[open]")) d.open = false;
+  });
+  // A picked date moves the task at once; the year check skips half-typed years like 0002.
+  document.addEventListener("change", e => {
+    if (e.target.matches(".when [type=date]") && /^[1-9]\d{3}-/.test(e.target.value)) e.target.form.requestSubmit();
   });
 </script>
 {% endblock %}

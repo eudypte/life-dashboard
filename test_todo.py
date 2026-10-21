@@ -112,6 +112,13 @@ class StoreTest(unittest.TestCase):
         self.assertEqual({t["id"]: (t["due"], t["done_on"]) for t in todo.tasks(self.db, T)},
                          {a: (None, None), r: (T, None)})
 
+    def test_move_keeps_time_and_repeat(self):
+        r = self.add("standup 9am every weekday")
+        todo.tick(self.db, r, T)
+        todo.move(self.db, r, d(10, 30))
+        t = todo.get(self.db, r)
+        self.assertEqual((t["due"], t["due_time"], t["repeat"], t["prev_due"]), (d(10, 30), "09:00", "every weekday", None))
+
     def test_update_and_delete(self):
         a = self.add("x tomorrow")
         todo.update(self.db, a, todo.from_form({"title": "y", "project": "code"}, T))
@@ -143,12 +150,18 @@ class ViewTest(unittest.TestCase):
                          ["overdue", "Tue 20", "Wed 21", "Thu 22", "Fri 23", "Sat 24", "Sun 25", "Mon 26", "later"])
         self.assertEqual([[t["id"] for t in x["rows"]] for x in g], [[1], [], [], [2], [], [], [], [], [3]])
 
-    def test_meta(self):
-        today_group, date_group = {"done": False, "mode": "time"}, {"done": False, "mode": "date"}
+    def test_row_date_and_meta(self):
+        day_group, date_group = {"done": False, "mode": "time"}, {"done": False, "mode": "date"}
+        done_group = {"done": True, "mode": "date"}
         t = self.task(1, d(10, 18), "home", "every week", due_time="09:00")
-        self.assertEqual(todo.meta(t, date_group, T, True), [("Oct 18 09:00", "warn"), ("↻ weekly", ""), ("#home", "")])
-        self.assertEqual(todo.meta(t, today_group, T, False), [("09:00", ""), ("↻ weekly", "")])
-        self.assertEqual(todo.meta(self.task(2, d(10, 23)), date_group, T, True), [("Fri 23", "")])
+        self.assertEqual(todo.when(t, date_group, T), ("Oct 18 09:00", "warn"))
+        self.assertEqual(todo.when(t, day_group, T), ("09:00", ""))
+        self.assertEqual(todo.when(self.task(2, T), day_group, T), ("today", "faint"))
+        self.assertEqual(todo.when(self.task(3), date_group, T), ("+ date", "faint"))
+        self.assertEqual(todo.when(self.task(4, d(10, 23)), date_group, T), ("Fri 23", ""))
+        self.assertIsNone(todo.when(t, done_group, T))
+        self.assertEqual(todo.meta(t, date_group, T, True), [("↻ weekly", ""), ("#home", "")])
+        self.assertEqual(todo.meta(t, done_group, T, False), [("↻ next Oct 18", "")])
         self.assertEqual(todo.day_label(d(1, 5, 2027), T, long=True), "Tue Jan 5 2027")
 
 

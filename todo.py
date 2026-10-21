@@ -119,6 +119,12 @@ def tick(path: Path, task_id: int, today: dt.date) -> None:
             con.execute("UPDATE task SET done_on = ? WHERE id = ?", (today.isoformat(), task_id))
 
 
+def move(path: Path, task_id: int, due: dt.date) -> None:
+    """New due date, keeping time and repeat. A moved task can no longer undo its last tick."""
+    with _db(path) as con:
+        con.execute("UPDATE task SET due = ?, prev_due = NULL WHERE id = ?", (due.isoformat(), task_id))
+
+
 def untick(path: Path, task_id: int) -> None:
     with _db(path) as con:
         con.execute("UPDATE task SET due = COALESCE(prev_due, due), prev_due = NULL, done_on = NULL"
@@ -144,7 +150,7 @@ def on_date(today: dt.date, month: int, day: int) -> dt.date | None:
     return None
 
 
-def _iso(s: str) -> dt.date | None:
+def iso_date(s: str) -> dt.date | None:
     try:
         return dt.date.fromisoformat(s)
     except ValueError:
@@ -220,7 +226,7 @@ def parse(text: str, today: dt.date, due: dt.date | None = None, project: str | 
     t["due"] = (take(r"\s(today|tomorrow)\s", lambda m: today + dt.timedelta(days=m[1].lower() == "tomorrow"))
                 or take(r"\sin\s+(\d{1,3})\s+days?\s", lambda m: today + dt.timedelta(days=int(m[1])))
                 or take(r"\snext\s+week\s", lambda m: next_weekday("mon", today))
-                or take(r"\s(\d{4}-\d\d-\d\d)\s", lambda m: _iso(m[1]))
+                or take(r"\s(\d{4}-\d\d-\d\d)\s", lambda m: iso_date(m[1]))
                 or take(rf"\s{MN}\s+(\d{{1,2}})\s", lambda m: on_date(today, month(m[1]), int(m[2])))
                 or take(rf"\s(\d{{1,2}})\s+{MN}\s", lambda m: on_date(today, month(m[2]), int(m[1])))
                 or take(r"\s(\d{1,2})/(\d{1,2})\s", lambda m: on_date(today, int(m[1]), int(m[2])))
@@ -244,7 +250,7 @@ def from_form(f: dict, today: dt.date) -> dict | None:
     title = " ".join(f.get("title", "").split())
     if not title:
         return None
-    due = _iso(f.get("due", ""))
+    due = iso_date(f.get("due", ""))
     repeat = f.get("repeat", "") if RULE_RE.fullmatch(f.get("repeat", "")) else None
     return {
         "title": title, "project": project_name(f.get("project", "")),
@@ -320,21 +326,26 @@ def repeat_label(rule: str) -> str:
             "every month": "monthly", "every year": "yearly"}.get(rule, rule)
 
 
-def meta(t: dict, group: dict, today: dt.date, show_project: bool) -> list[tuple[str, str]]:
-    """The right-hand column of a task row, as (text, css class) parts."""
-    parts = []
+def when(t: dict, group: dict, today: dt.date) -> tuple[str, str] | None:
+    """The clickable date of an open task, as (text, css class); None in the done group.
+    Where the group already says the day, it shows the time, or the day faintly."""
     if group["done"]:
-        if t["repeat"]:
-            parts.append((f"↻ next {day_label(t['due'], today)}", ""))
-    else:
-        if t["due"] and group["mode"] == "time":
-            if t["due_time"]:
-                parts.append((t["due_time"], ""))
-        elif t["due"]:
-            when = day_label(t["due"], today) + (f" {t['due_time']}" if t["due_time"] else "")
-            parts.append((when, "warn" if t["due"] < today else ""))
-        if t["repeat"]:
-            parts.append(("↻ " + repeat_label(t["repeat"]), ""))
+        return None
+    if not t["due"]:
+        return "+ date", "faint"
+    if group["mode"] == "time":
+        return (t["due_time"], "") if t["due_time"] else (day_label(t["due"], today), "faint")
+    text = day_label(t["due"], today) + (f" {t['due_time']}" if t["due_time"] else "")
+    return text, "warn" if t["due"] < today else ""
+
+
+def meta(t: dict, group: dict, today: dt.date, show_project: bool) -> list[tuple[str, str]]:
+    """The rest of a task row after its date, as (text, css class) parts."""
+    parts = []
+    if group["done"] and t["repeat"]:
+        parts.append((f"↻ next {day_label(t['due'], today)}", ""))
+    elif t["repeat"]:
+        parts.append(("↻ " + repeat_label(t["repeat"]), ""))
     if t["project"] and show_project:
         parts.append(("#" + t["project"], ""))
     return parts

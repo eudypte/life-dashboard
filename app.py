@@ -58,7 +58,7 @@ def weight_delta(kg) -> str:
 
 
 templates.env.filters |= {"n": fmt, "pct": pct, "plural": plural, "wt": weight, "wtd": weight_delta,
-                          "day_label": todo.day_label, "task_meta": todo.meta}
+                          "day_label": todo.day_label, "task_when": todo.when, "task_meta": todo.meta}
 
 
 def weight_chart(window, all_ws, end: dt.date, days: int, w: int = 600, h: int = 220):
@@ -171,7 +171,8 @@ def presets_view(request: Request):
 
 
 # ---------- todo ----------
-# The only writes. Plain forms that answer 303 back to the page they came from.
+# The only writes. Plain forms that answer 303 back to the page they came from;
+# with JS on, todo.html sends them with fetch and swaps in the changed parts of that page.
 
 def todo_render(request: Request, page: str, project: str | None = None, edit: int | None = None,
                 added: int | None = None, done: int | None = None):
@@ -249,6 +250,17 @@ async def todo_edit(request: Request, task_id: int):
     t = todo.from_form(f, data.logical_today(CFG))
     if t:
         todo.update(TODO_DB, task_id, t)
+    return back(f, task_id=task_id)
+
+
+@app.post("/todo/{task_id}/due")
+async def todo_due(request: Request, task_id: int):
+    """The date menu: "tomorrow" or a picked ISO date."""
+    f = await form(request)
+    today = data.logical_today(CFG)
+    due = today + dt.timedelta(days=1) if f.get("due") == "tomorrow" else todo.iso_date(f.get("due", ""))
+    if due:
+        todo.move(TODO_DB, task_id, due)
     return back(f, task_id=task_id)
 
 
