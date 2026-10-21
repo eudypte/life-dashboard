@@ -252,7 +252,7 @@ def parse(text: str, today: dt.date, due: dt.date | None = None, project: str | 
     t["title"] = " ".join(s.split())
     if t["repeat"] and not t["due"]:
         t["due"] = first_due(t["repeat"], today)
-    t["due"] = t["due"] or (today if t["due_time"] else due)
+    t["due"] = t["due"] or due or (today if t["due_time"] else None)  # a time alone means the page's day, else today
     return t
 
 
@@ -282,13 +282,33 @@ def _sort_key(t: dict):
     return t["due"] or dt.date.max, t["due_time"] or "99", t["priority"], t["id"]
 
 
-def _group(label, rows, mode="date", cls="", done=False, keep=False, note=""):
-    """mode: what the meta column shows for the due date ("time" when the group already is that day)."""
-    return {"label": label, "rows": rows, "mode": mode, "cls": cls, "done": done, "keep": keep, "note": note}
+def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None):
+    """mode: what the meta column shows for the due date ("time" when the group already is that day).
+    day: the date of an Upcoming day section."""
+    return {"label": label, "rows": rows, "mode": mode, "cls": cls, "done": done, "keep": keep, "note": note,
+            "day": day}
 
 
-def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None) -> list[dict]:
-    """Groups for one page: "today", "upcoming", "inbox" or "project". Empty groups are hidden unless keep."""
+def week_view(today: dt.date, start: dt.date | None = None) -> dict:
+    """Upcoming's header: the week shown (Monday first, never before this week) and its first listed day."""
+    this = today - dt.timedelta(days=today.weekday())
+    start = max(start - dt.timedelta(days=start.weekday()), this) if start else this
+    end = start + dt.timedelta(days=6)
+    if start.year != end.year:
+        title = f"{start:%b %Y} - {end:%b %Y}"
+    elif start.month != end.month:
+        title = f"{start:%b} - {end:%b %Y}"
+    else:
+        title = f"{start:%B %Y}"
+    return {"start": start, "days": [start + dt.timedelta(days=i) for i in range(7)], "first": max(start, today),
+            "title": title, "prev": start - dt.timedelta(days=7) if start > this else None,
+            "next": start + dt.timedelta(days=7)}
+
+
+def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None,
+           first: dt.date | None = None) -> list[dict]:
+    """Groups for one page: "today", "upcoming", "inbox" or "project". Empty groups are hidden unless keep.
+    Upcoming lists the 7 days from `first` (default today), one section per day."""
     open_ = sorted(filter(is_open, ts), key=_sort_key)
     done = [t for t in ts if t["done_on"] == today]
     overdue = [t for t in open_ if t["due"] and t["due"] < today]
@@ -297,11 +317,12 @@ def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None
                 _group("today", [t for t in open_ if t["due"] == today], "time"),
                 _group("done", done, done=True)]
     if page == "upcoming":
-        days = [today + dt.timedelta(days=i) for i in range(7)]
-        return ([_group("overdue", overdue, cls="warn")]
-                + [_group(d.strftime("%a %d"), [t for t in open_ if t["due"] == d], "time", cls="day", keep=True,
-                          note={0: "today", 1: "tomorrow"}.get(i, "")) for i, d in enumerate(days)]
-                + [_group("later", [t for t in open_ if t["due"] and t["due"] > days[-1]])])
+        first = first or today
+        notes = {today: "Today", today + dt.timedelta(days=1): "Tomorrow"}
+        days = [first + dt.timedelta(days=i) for i in range(7)]
+        return ([_group("overdue", overdue, cls="warn")] if first == today else []) + [
+            _group(f"{d:%b} {d.day}", [t for t in open_ if t["due"] == d], "time", cls="day", keep=True,
+                   note=notes.get(d, ""), day=d) for d in days]
     member = (lambda t: t["project"] == project) if page == "project" else (lambda t: not t["project"])
     return [_group("overdue", [t for t in overdue if member(t)], cls="warn"),
             _group("scheduled", [t for t in open_ if t["due"] and t["due"] >= today and member(t)]),

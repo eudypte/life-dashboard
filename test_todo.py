@@ -60,6 +60,7 @@ class ParseTest(unittest.TestCase):
     def test_page_defaults(self):
         self.assertEqual(self.p("x", due=T)["due"], T)
         self.assertEqual(self.p("x tomorrow", due=T)["due"], d(10, 21))
+        self.assertEqual(self.p("x 4pm", due=d(10, 25))["due"], d(10, 25))  # a time on an Upcoming day stays on that day
         self.assertEqual(self.p("x", project="home")["project"], "home")
         self.assertEqual(self.p("x #code", project="home")["project"], "code")
 
@@ -164,9 +165,22 @@ class ViewTest(unittest.TestCase):
     def test_upcoming_has_every_day_of_the_week(self):
         ts = [self.task(1, d(10, 18)), self.task(2, d(10, 22)), self.task(3, d(11, 2)), self.task(4)]
         g = todo.groups(ts, T, "upcoming")
-        self.assertEqual([x["label"] for x in g],
-                         ["overdue", "Tue 20", "Wed 21", "Thu 22", "Fri 23", "Sat 24", "Sun 25", "Mon 26", "later"])
-        self.assertEqual([[t["id"] for t in x["rows"]] for x in g], [[1], [], [], [2], [], [], [], [], [3]])
+        self.assertEqual([(x["label"], x["note"]) for x in g],
+                         [("overdue", ""), ("Oct 20", "Today"), ("Oct 21", "Tomorrow"), ("Oct 22", ""), ("Oct 23", ""),
+                          ("Oct 24", ""), ("Oct 25", ""), ("Oct 26", "")])
+        self.assertEqual([[t["id"] for t in x["rows"]] for x in g], [[1], [], [], [2], [], [], [], []])
+        later = todo.groups(ts, T, "upcoming", first=d(11, 2))  # a later week: no overdue group
+        self.assertEqual([x["day"] for x in later][:2], [d(11, 2), d(11, 3)])
+        self.assertEqual(later[0]["rows"][0]["id"], 3)
+
+    def test_week_view(self):
+        w = todo.week_view(T)  # Tue: this week is Mon 19 to Sun 25, listed from today
+        self.assertEqual((w["start"], w["first"], w["prev"], w["next"], w["title"]),
+                         (d(10, 19), T, None, d(10, 26), "October 2026"))
+        w = todo.week_view(T, d(10, 29))  # any day picks its Monday
+        self.assertEqual((w["start"], w["first"], w["prev"], w["title"]), (d(10, 26), d(10, 26), d(10, 19), "Oct - Nov 2026"))
+        self.assertEqual(todo.week_view(T, d(9, 1))["start"], d(10, 19))  # never before this week
+        self.assertEqual(todo.week_view(T, d(12, 30))["title"], "Dec 2026 - Jan 2027")
 
     def test_row_date_and_meta(self):
         day_group, date_group = {"done": False, "mode": "time"}, {"done": False, "mode": "date"}

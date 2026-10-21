@@ -55,7 +55,8 @@
       <span>due {{ datefield("due", t.due) }}</span>
       <label>time <input type="time" name="due_time" value="{{ t.due_time or '' }}"></label>
       <label>priority <select name="priority">{% for p in range(1, 5) %}<option value="{{ p }}"{% if p == t.priority %} selected{% endif %}>p{{ p }}{{ " (none)" if p == 4 }}</option>{% endfor %}</select></label>
-      <label>project <input class="proj" name="project" list="projects" value="{{ t.project or '' }}" placeholder="inbox"></label>
+      <span>project <span class="combo"><input class="proj" name="project" list="projects" value="{{ t.project or '' }}" placeholder="inbox" autocomplete="off" spellcheck="false" aria-label="project" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sug{{ t.id }}">
+        {#- #}<ul class="suggest" id="sug{{ t.id }}" role="listbox" hidden></ul></span></span>
       <label>repeat <select name="repeat"><option value="">never</option>
         {%- for r in (rules | list) + ([t.repeat] if t.repeat and t.repeat not in rules else []) %}<option{% if r == t.repeat %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
     </div>

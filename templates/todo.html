@@ -19,7 +19,7 @@
 {% block main %}
 <fieldset class="span2">
   <legend>[ {{ legend }} ]</legend>
-  <form class="add" method="post" action="/todo/add">
+  <form class="add" id="quickadd" method="post" action="/todo/add">
     <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="project" value="{{ project or '' }}">
     <span class="plus">+</span><input name="q" placeholder="{{ 'add to #' ~ project ~ '…' if project else 'add a task…' }}" autocomplete="off" spellcheck="false" aria-label="quick add" required>
     <button class="btn">add ⏎</button>
@@ -33,10 +33,38 @@
     <form class="inline" method="post" action="/todo/{{ ticked.id }}/done"><input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="undo" value="1"><button class="link">undo</button></form></div>
   {% endif %}
   </div>
+  {% if week %}
+  <div class="week">
+    <div class="week-head"><span class="hi">{{ week.title }}</span>
+      <span class="week-nav">
+        {%- if week.prev %}<a href="/todo/upcoming/{{ week.prev }}" aria-label="previous week">&lt;</a>{% else %}<span class="dim">&lt;</span>{% endif %}
+        <a href="/todo/upcoming">today</a>
+        <a href="/todo/upcoming/{{ week.next }}" aria-label="next week">&gt;</a></span></div>
+    <div class="strip">
+    {%- for d in week.days %}
+      {%- if d >= week.first %}<a href="#d{{ d }}"{% if d == today %} class="cur" aria-current="date"{% endif %}>{% else %}<span class="past">{% endif -%}
+      <span class="wd">{{ d.strftime("%a") }}</span><span>{{ d.day }}</span>
+      {%- if d >= week.first %}</a>{% else %}</span>{% endif %}
+    {%- endfor %}</div>
+  </div>
+  {% endif %}
   <div class="tasks">
   {% for g in groups if g.rows or g.keep %}
+    {% if g.day %}
+    <div class="grp day" id="d{{ g.day }}"><span class="hi">{{ g.label }}</span>{% if g.note %} · {{ g.note }}{% endif %} · <span class="dim">{{ g.day.strftime("%A") }}</span></div>
+    {% else %}
     <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">· {{ g.note }}</span>{% endif %} <span class="dim">· {{ g.rows | length or "nothing" }}</span></div>
+    {% endif %}
     {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project", date_options) }}{% endfor %}</div>{% endif %}
+    {% if g.day %}
+    <details class="dayadd" id="add-{{ g.day }}"><summary>+ add task</summary>
+      <form class="add" method="post" action="/todo/add">
+        <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="due" value="{{ g.day }}">
+        <span class="plus">+</span><input name="q" placeholder="add to {{ g.label }}…" autocomplete="off" spellcheck="false" aria-label="add a task on {{ g.label }}" required>
+        <button class="btn">add ⏎</button>
+      </form>
+    </details>
+    {% endif %}
   {% else %}
     <p class="empty">nothing here</p>
   {% endfor %}
@@ -45,7 +73,7 @@
 <datalist id="projects">{% for name, n in counts.projects %}<option value="{{ name }}">{% endfor %}</datalist>
 <script>
   // Live preview of what quick add reads. The form works without it.
-  const q = document.querySelector(".add [name=q]"), out = document.querySelector(".add + .preview"), hint = out.innerHTML;
+  const q = document.querySelector("#quickadd [name=q]"), out = document.querySelector("#quickadd + .preview"), hint = out.innerHTML;
   let timer;
   q.addEventListener("input", () => {
     clearTimeout(timer);
@@ -72,7 +100,9 @@
     e.preventDefault();
     const url = by?.hasAttribute("formaction") ? by.formAction : form.action;
     load(url, { method: "POST", body: new URLSearchParams(new FormData(form, by)) }).then(() => {
-      if (form.matches(".add")) { q.value = ""; out.innerHTML = hint; q.focus(); }
+      if (form === q.form) { q.value = ""; out.innerHTML = hint; q.focus(); }
+      const box = form.closest(".dayadd"), fresh = box && document.getElementById(box.id);
+      if (fresh) { fresh.open = true; fresh.querySelector("[name=q]").focus(); }  // ready for the next task that day
     }, () => location.reload());
   });
   document.addEventListener("click", e => {
@@ -92,6 +122,10 @@
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") for (const d of document.querySelectorAll("details.when[open]")) d.open = false;
   });
+  // "+ add task" under an Upcoming day: type straight away.
+  document.addEventListener("toggle", e => {
+    if (e.target.matches(".dayadd") && e.target.open) e.target.querySelector("[name=q]").focus();
+  }, true);
   // Date fields show month and day only. In the menu a picked date moves the task at once;
   // the year check skips half-typed years like 0002 from the keyboard.
   document.addEventListener("change", e => {
@@ -101,6 +135,53 @@
     shown.textContent = input.value ? new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "pick a date";
     shown.classList.toggle("dim", !input.value);
     if (input.closest(".when") && /^[1-9]\d{3}-/.test(input.value)) input.form.requestSubmit();
+  });
+
+  // Project field in the edit form: themed suggestions in place of the browser's datalist dropdown,
+  // which still shows without JS. Filters the existing names; any new name is still allowed.
+  function show(input, open) {
+    input.nextElementSibling.hidden = !open;
+    input.setAttribute("aria-expanded", open);
+    input.removeAttribute("aria-activedescendant");
+  }
+  function suggest(input) {
+    const list = input.nextElementSibling, typed = input.value.trim().replace(/^#/, "").toLowerCase();
+    const names = [...document.querySelectorAll("#projects option")].map(o => o.value)
+      .filter(n => n.includes(typed) && n !== typed).sort((a, b) => b.startsWith(typed) - a.startsWith(typed));
+    list.replaceChildren(...names.map((n, i) => Object.assign(document.createElement("li"), { textContent: n, id: `${list.id}-${i}`, role: "option" })));
+    show(input, names.length > 0);
+  }
+  function pick(input, li) {
+    input.value = li.textContent;
+    show(input, false);
+  }
+  document.addEventListener("focusin", e => {
+    if (e.target.matches(".combo input")) { e.target.removeAttribute("list"); suggest(e.target); }
+  });
+  document.addEventListener("focusout", e => { if (e.target.matches(".combo input")) show(e.target, false); });
+  document.addEventListener("input", e => { if (e.target.matches(".combo input")) suggest(e.target); });
+  document.addEventListener("mousedown", e => {
+    const li = e.target.closest(".suggest li");
+    if (li) { e.preventDefault(); pick(li.parentElement.previousElementSibling, li); }
+  });
+  document.addEventListener("keydown", e => {
+    const input = e.target;
+    if (!input.matches(".combo input")) return;
+    const list = input.nextElementSibling, items = [...list.children], at = items.findIndex(li => li.classList.contains("on"));
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (list.hidden) return suggest(input);
+      const n = items.length, i = e.key === "ArrowDown" ? (at + 1) % n : (at <= 0 ? n : at) - 1;
+      items.forEach((li, k) => { li.classList.toggle("on", k === i); li.setAttribute("aria-selected", k === i); });
+      input.setAttribute("aria-activedescendant", items[i].id);
+      items[i].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && !list.hidden && at >= 0) {
+      e.preventDefault();
+      pick(input, items[at]);
+    } else if (e.key === "Escape" && !list.hidden) {
+      e.preventDefault();
+      show(input, false);
+    }
   });
 </script>
 {% endblock %}

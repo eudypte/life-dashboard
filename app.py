@@ -175,16 +175,18 @@ def presets_view(request: Request):
 # with JS on, todo.html sends them with fetch and swaps in the changed parts of that page.
 
 def todo_render(request: Request, page: str, project: str | None = None, edit: int | None = None,
-                added: int | None = None, done: int | None = None):
+                added: int | None = None, done: int | None = None, week: dt.date | None = None):
     today = data.logical_today(CFG)
     ts = todo.tasks(TODO_DB, today)
-    groups = todo.groups(ts, today, page, project)
+    week_view = todo.week_view(today, week) if page == "upcoming" else None
+    groups = todo.groups(ts, today, page, project, week_view and week_view["first"])
     ticked = todo.get(TODO_DB, done) if done else None
     if ticked and any(ticked["id"] == t["id"] for g in groups if g["done"] for t in g["rows"]):
         ticked = None  # still on the page, struck through in the done group
     return render(
         request, "todo.html", "todo", page=page, project=project, groups=groups, counts=todo.counts(ts, today),
-        here="/todo/project/" + quote(project, safe="") if project else {"today": "/todo"}.get(page, "/todo/" + page),
+        here="/todo/project/" + quote(project, safe="") if project else f"/todo/upcoming/{week_view['start']}"
+        if week else {"today": "/todo"}.get(page, "/todo/" + page), week=week_view,
         edit=edit, added=todo.get(TODO_DB, added) if added else None, ticked=ticked, rules=todo.RULES,
         date_options=todo.date_options(today),
     )
@@ -205,6 +207,14 @@ def todo_view(request: Request, page: str = "today", edit: int | None = None,
     if request.url.path != "/todo" and page not in ("inbox", "upcoming"):
         raise HTTPException(404)
     return todo_render(request, page, edit=edit, added=added, done=done)
+
+
+@app.get("/todo/upcoming/{week}")
+def todo_week(request: Request, week: str, edit: int | None = None,
+              added: int | None = None, done: int | None = None):
+    if not (day := todo.iso_date(week)):
+        raise HTTPException(404)
+    return todo_render(request, "upcoming", edit=edit, added=added, done=done, week=day)
 
 
 @app.get("/todo/project/{name}")
@@ -228,7 +238,8 @@ def back(f: dict, query: str = "", task_id: int | None = None) -> RedirectRespon
 async def todo_add(request: Request):
     f = await form(request)
     today = data.logical_today(CFG)
-    t = todo.parse(f.get("q", ""), today, today if f.get("page") == "today" else None, f.get("project") or None)
+    due = todo.iso_date(f.get("due", "")) or (today if f.get("page") == "today" else None)  # the page's default
+    t = todo.parse(f.get("q", ""), today, due, f.get("project") or None)
     if not t["title"]:
         return back(f)
     task_id = todo.add(TODO_DB, t, dt.datetime.now())
