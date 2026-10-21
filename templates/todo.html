@@ -121,7 +121,11 @@
   document.addEventListener("input", e => { if (e.target.matches(".hl > input")) { read(e.target); suggestToken(e.target); } });
   for (const type of ["scroll", "keyup", "click", "select"])
     document.addEventListener(type, e => {
-      if (e.target.matches?.(".hl > input")) e.target.previousElementSibling.scrollLeft = e.target.scrollLeft;
+      const input = e.target;
+      if (!input.matches?.(".hl > input")) return;
+      input.previousElementSibling.scrollLeft = input.scrollLeft;
+      const list = input.nextElementSibling, at = tokenAt(input);  // the box scrolls after the input event:
+      if (!list.hidden && at) anchor(input, list, at.start);       // keep the list under its token
     }, true);
 
   // In place: send forms and row links with fetch, then swap in the parts of the page they change.
@@ -316,12 +320,15 @@
   });
   document.addEventListener("focusout", e => { if (e.target.matches(".combo input")) show(e.target, false); });
   document.addEventListener("input", e => { if (e.target.matches(".combo input")) suggest(e.target); });
-  function step(input, down) {
-    const items = [...input.nextElementSibling.children], n = items.length, at = items.findIndex(li => li.classList.contains("on"));
-    const i = down ? (at + 1) % n : (at <= 0 ? n : at) - 1;
+  function highlight(input, i) {
+    const items = [...input.nextElementSibling.children];
     items.forEach((li, k) => { li.classList.toggle("on", k === i); li.setAttribute("aria-selected", k === i); });
     input.setAttribute("aria-activedescendant", items[i].id);
-    items[i].scrollIntoView({ block: "nearest" });
+    return items[i];
+  }
+  function step(input, down) {
+    const items = [...input.nextElementSibling.children], n = items.length, at = items.findIndex(li => li.classList.contains("on"));
+    highlight(input, down ? (at + 1) % n : (at <= 0 ? n : at) - 1).scrollIntoView({ block: "nearest" });
   }
   document.addEventListener("mousedown", e => {
     const li = e.target.closest(".suggest li");
@@ -362,6 +369,21 @@
     list.dataset.sigil = at?.sigil || "#";
     list.replaceChildren(...names.map((n, i) => Object.assign(document.createElement("li"), { textContent: n, id: `${list.id}-${i}`, role: "option" })));
     show(input, names.length > 0);
+    if (!names.length) return;
+    highlight(input, 0);  // what Enter or Tab fills, from the start
+    anchor(input, list, at.start);
+  }
+  // The list opens under the # or @: its x is the width of the text before it, in the input's own font, less
+  // the input's sideways scroll. It stays on screen, and inside the Upcoming board, which clips what sticks out.
+  const ruler = document.createElement("canvas").getContext("2d");
+  function anchor(input, list, index) {
+    const cs = getComputedStyle(input);
+    ruler.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const x = input.offsetLeft + parseFloat(cs.paddingLeft) + ruler.measureText(input.value.slice(0, index)).width - input.scrollLeft;
+    list.style.left = `${Math.max(0, x)}px`;
+    const edge = Math.min(innerWidth, input.closest(".board")?.getBoundingClientRect().right ?? innerWidth) - 4;
+    const over = list.getBoundingClientRect().right - edge;
+    if (over > 0) list.style.left = `${Math.max(0, x - over)}px`;
   }
   function acceptToken(input, li) {
     const at = tokenAt(input), v = input.value, rest = v.slice(input.selectionStart).replace(/^[\w-]*/, "");  // the rest of the word goes too

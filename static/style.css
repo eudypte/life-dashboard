@@ -209,7 +209,7 @@ html:not(.js) .dayadd .close { display: none; }
 .suggest li { padding: 1px 8px; color: var(--hi); white-space: nowrap; cursor: pointer; }
 .suggest li::before { content: "# "; color: var(--dim); }
 .multi .suggest li::before, .suggest[data-sigil="@"] li::before { content: "@ "; }
-.hl > .suggest { min-width: 16ch; width: max-content; max-width: 100%; }
+.hl > .suggest { min-width: 16ch; width: max-content; }  /* left: under the # or @ (todo.html anchor) */
 .suggest li:hover, .suggest li.on { background: var(--bg2); color: var(--accent); }
 details.when { display: inline-block; position: relative; }
 details.when summary { display: inline; cursor: pointer; list-style: none; }
