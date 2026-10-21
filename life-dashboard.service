@@ -4,6 +4,8 @@ After=network.target
 
 [Service]
 WorkingDirectory=%h/life-dashboard
+# LIFE_DASHBOARD_TOKEN=..., kept outside the repo (see README, Login)
+EnvironmentFile=-%h/.config/life-dashboard.env
 ExecStart=%h/life-dashboard/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8090 --no-access-log
 Restart=on-failure
 

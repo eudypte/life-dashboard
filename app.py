@@ -1,11 +1,14 @@
 """Life Dashboard: read-only views over the nutrition-log data folder, plus a todo list."""
 import datetime as dt
 import hashlib
+import hmac
+import logging
+import os
 import tomllib
 from pathlib import Path
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs, quote, urlsplit
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -101,13 +104,99 @@ def render(request: Request, name: str, view: str, **ctx):
     return templates.TemplateResponse(request, name, {
         "view": view, "today": data.logical_today(CFG), "now": dt.datetime.now(),
         "conflicts": data.conflicts(CFG), "unit": CFG.weight_unit, "goal": goals(),
-        "themes": THEMES, "ranges": RANGES, **ctx,
+        "themes": THEMES, "ranges": RANGES, "signed_in": signed_in(request), **ctx,
     })
+
+
+# ---------- login ----------
+# One token, set on the server, guards the home page and /todo (require_login); the other views stay public.
+# A signed-out page load gets the login form in place (200, so the deploy health check of / still passes),
+# and a fetch from todo.html gets 401, so the page reloads into the login.
+
+COOKIE = "auth"
+if not os.environ.get("LIFE_DASHBOARD_TOKEN"):
+    logging.getLogger("uvicorn.error").warning("LIFE_DASHBOARD_TOKEN is not set: the home page and /todo stay locked")
+
+
+def token() -> str:
+    """Read per request, so a missing token only locks the pages instead of stopping the app."""
+    return os.environ.get("LIFE_DASHBOARD_TOKEN", "")
+
+
+def session() -> str | None:
+    """The cookie value: an HMAC of the token, so the cookie never holds the token itself
+    and changing the token logs every device out. None while no token is set."""
+    return hmac.new(token().encode(), b"life-dashboard login", hashlib.sha256).hexdigest() if token() else None
+
+
+def signed_in(request: Request) -> bool:
+    expected = session()
+    return expected is not None and hmac.compare_digest(request.cookies.get(COOKIE, ""), expected)
+
+
+def same_origin(request: Request) -> bool:
+    """A browser POST from another site carries its Origin; no Origin (curl, old browsers) is allowed."""
+    origin = request.headers.get("origin")
+    return origin is None or urlsplit(origin).netloc == request.headers.get("host")
+
+
+def local(page: str) -> str:
+    """Only ever back to a page of this site."""
+    return page if page.startswith("/") and not page.startswith(("//", "/\\")) else "/"
+
+
+def login_page(request: Request, page: str, wrong: bool = False):
+    return templates.TemplateResponse(request, "login.html", {"next": local(page), "wrong": wrong},
+                                      status_code=401 if wrong else 200, headers={"Cache-Control": "no-store"})
+
+
+class LoginNeeded(Exception):
+    pass
+
+
+@app.exception_handler(LoginNeeded)
+def login_needed(request: Request, _: LoginNeeded):
+    return login_page(request, request.url.path + (f"?{request.url.query}" if request.url.query else ""))
+
+
+def require_login(request: Request):
+    if request.method == "POST" and not same_origin(request):
+        raise HTTPException(403)
+    if signed_in(request):
+        return
+    if request.method == "GET" and request.headers.get("sec-fetch-mode", "navigate") == "navigate":
+        raise LoginNeeded
+    raise HTTPException(401)
+
+
+@app.get("/login")
+def login_view(request: Request, next: str = "/"):
+    return RedirectResponse(local(next), status_code=303) if signed_in(request) else login_page(request, next)
+
+
+@app.post("/login")
+async def login(request: Request):
+    if not same_origin(request):
+        raise HTTPException(403)
+    f = await form(request)
+    if not token() or not hmac.compare_digest(f.get("token", "").encode(), token().encode()):
+        return login_page(request, f.get("next", ""), wrong=True)
+    r = RedirectResponse(local(f.get("next", "")), status_code=303)
+    r.set_cookie(COOKIE, session(), max_age=365 * 24 * 3600, httponly=True, samesite="lax",
+                 secure=request.url.scheme == "https" or request.url.hostname not in ("127.0.0.1", "localhost"))
+    return r
+
+
+@app.post("/logout")
+def logout():
+    r = RedirectResponse("/login", status_code=303)
+    r.delete_cookie(COOKIE)
+    return r
 
 
 # ---------- views ----------
 
-@app.get("/")
+@app.get("/", dependencies=[Depends(require_login)])
 def today_view(request: Request, date: dt.date | None = None):
     today = data.logical_today(CFG)
     date = min(date or today, today)
@@ -173,6 +262,10 @@ def presets_view(request: Request):
 # ---------- todo ----------
 # The only writes. Plain forms that answer 303 back to the page they came from;
 # with JS on, todo.html sends them with fetch and swaps in the changed parts of that page.
+# Every route on todo_app needs the login (require_login).
+
+todo_app = APIRouter(dependencies=[Depends(require_login)])
+
 
 def todo_render(request: Request, page: str, project: str | None = None, edit: int | None = None,
                 added: int | None = None, done: int | None = None, week: dt.date | None = None,
@@ -195,7 +288,7 @@ def todo_render(request: Request, page: str, project: str | None = None, edit: i
     )
 
 
-@app.get("/todo/parse")
+@todo_app.get("/todo/parse")
 def todo_parse(request: Request, q: str = "", page: str = "", project: str = "", due: str = "", label: str = ""):
     """The quick-add preview line, as an HTML fragment that also carries the token spans to highlight."""
     today = data.logical_today(CFG)
@@ -207,8 +300,8 @@ def todo_parse(request: Request, q: str = "", page: str = "", project: str = "",
     return templates.TemplateResponse(request, "_todo_preview.html", {"p": p, "today": today})
 
 
-@app.get("/todo")
-@app.get("/todo/{page}")
+@todo_app.get("/todo")
+@todo_app.get("/todo/{page}")
 def todo_view(request: Request, page: str = "today", edit: int | None = None,
               added: int | None = None, done: int | None = None):
     if request.url.path != "/todo" and page not in ("inbox", "upcoming"):
@@ -216,7 +309,7 @@ def todo_view(request: Request, page: str = "today", edit: int | None = None,
     return todo_render(request, page, edit=edit, added=added, done=done)
 
 
-@app.get("/todo/upcoming/{week}")
+@todo_app.get("/todo/upcoming/{week}")
 def todo_week(request: Request, week: str, edit: int | None = None,
               added: int | None = None, done: int | None = None):
     if not (day := todo.iso_date(week)):
@@ -224,7 +317,7 @@ def todo_week(request: Request, week: str, edit: int | None = None,
     return todo_render(request, "upcoming", edit=edit, added=added, done=done, week=day)
 
 
-@app.get("/todo/project/{name}")
+@todo_app.get("/todo/project/{name}")
 def todo_project(request: Request, name: str, edit: int | None = None,
                  added: int | None = None, done: int | None = None):
     return todo_render(request, "project", name, edit=edit, added=added, done=done)
@@ -241,7 +334,7 @@ def back(f: dict, query: str = "", task_id: int | None = None) -> RedirectRespon
     return RedirectResponse(page + query + (f"#t{task_id}" if task_id else ""), status_code=303)
 
 
-@app.post("/todo/add")
+@todo_app.post("/todo/add")
 async def todo_add(request: Request):
     f = await form(request)
     today = data.logical_today(CFG)
@@ -253,7 +346,7 @@ async def todo_add(request: Request):
     return back(f, f"?added={task_id}", task_id)
 
 
-@app.post("/todo/{task_id}/done")
+@todo_app.post("/todo/{task_id}/done")
 async def todo_done(request: Request, task_id: int):
     f = await form(request)
     if f.get("undo"):
@@ -263,7 +356,7 @@ async def todo_done(request: Request, task_id: int):
     return back(f, f"?done={task_id}", task_id)
 
 
-@app.post("/todo/{task_id}/edit")
+@todo_app.post("/todo/{task_id}/edit")
 async def todo_edit(request: Request, task_id: int):
     f = await form(request)
     t = todo.from_form(f, data.logical_today(CFG))
@@ -272,7 +365,7 @@ async def todo_edit(request: Request, task_id: int):
     return back(f, task_id=task_id)
 
 
-@app.post("/todo/{task_id}/due")
+@todo_app.post("/todo/{task_id}/due")
 async def todo_due(request: Request, task_id: int):
     """The date menu: one of its options ("none" clears the date) or a picked ISO date.
     drop=1: dragged on the Upcoming board onto that day, with the day's new order as ids in `order`."""
@@ -287,13 +380,13 @@ async def todo_due(request: Request, task_id: int):
     return back(f, task_id=task_id)
 
 
-@app.get("/todo/label/{name}")
+@todo_app.get("/todo/label/{name}")
 def todo_label(request: Request, name: str, edit: int | None = None,
                added: int | None = None, done: int | None = None):
     return todo_render(request, "label", edit=edit, added=added, done=done, label=name)
 
 
-@app.post("/todo/label/{name}/rename")
+@todo_app.post("/todo/label/{name}/rename")
 async def todo_label_rename(request: Request, name: str):
     f = await form(request)
     if (new := todo.project_name(f.get("name", ""))) and new != name:
@@ -303,14 +396,14 @@ async def todo_label_rename(request: Request, name: str):
     return back(f)
 
 
-@app.post("/todo/label/{name}/color")
+@todo_app.post("/todo/label/{name}/color")
 async def todo_label_color(request: Request, name: str):
     f = await form(request)
     todo.color_label(TODO_DB, name, f.get("color", ""))
     return back(f)
 
 
-@app.post("/todo/label/{name}/delete")
+@todo_app.post("/todo/label/{name}/delete")
 async def todo_label_delete(request: Request, name: str):
     """It comes off its tasks; the tasks stay."""
     f = await form(request)
@@ -320,7 +413,7 @@ async def todo_label_delete(request: Request, name: str):
     return back(f)
 
 
-@app.post("/todo/project/{name}/rename")
+@todo_app.post("/todo/project/{name}/rename")
 async def todo_project_rename(request: Request, name: str):
     f = await form(request)
     if (new := todo.project_name(f.get("name", ""))) and new != name:
@@ -330,7 +423,7 @@ async def todo_project_rename(request: Request, name: str):
     return back(f)
 
 
-@app.post("/todo/project/{name}/delete")
+@todo_app.post("/todo/project/{name}/delete")
 async def todo_project_delete(request: Request, name: str):
     """Its tasks move to the inbox."""
     f = await form(request)
@@ -340,8 +433,11 @@ async def todo_project_delete(request: Request, name: str):
     return back(f)
 
 
-@app.post("/todo/{task_id}/delete")
+@todo_app.post("/todo/{task_id}/delete")
 async def todo_delete(request: Request, task_id: int):
     f = await form(request)
     todo.delete(TODO_DB, task_id)
     return back(f)
+
+
+app.include_router(todo_app)

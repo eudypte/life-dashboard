@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Log in · Life Dashboard{% endblock %}
+{% block refresh %}{% endblock %}
+{% block body %}
+<main class="login">
+  <form method="post" action="/login">
+    <fieldset>
+      <legend>[ Life Dashboard ]</legend>
+      <input type="hidden" name="next" value="{{ next }}">
+      {# for password managers: they file the token under this fixed username #}
+      <input class="offscreen" type="text" name="username" autocomplete="username" value="life-dashboard" tabindex="-1" aria-hidden="true" readonly>
+      <label for="token">token</label>
+      <div class="add">
+        <span class="mask"><input id="token" name="token" type="password" autocomplete="current-password" required autofocus
+          {% if wrong %}aria-invalid="true" aria-describedby="wrong"{% endif %}><span class="blocks" aria-hidden="true"></span></span>
+        <button class="btn">log in ⏎</button>
+      </div>
+      {% if wrong %}<p class="warn" id="wrong" role="alert">wrong token</p>{% endif %}
+    </fieldset>
+  </form>
+</main>
+<script>
+  // The token as one square per character, drawn under the input's transparent text (without JS: the browser's dots).
+  const input = document.getElementById("token"), blocks = input.nextElementSibling;
+  function draw() {
+    blocks.style.width = input.value.length + "ch";
+    blocks.style.left = -input.scrollLeft + "px";
+  }
+  for (const type of ["input", "keyup", "scroll", "click", "select"]) input.addEventListener(type, () => requestAnimationFrame(draw));
+  draw();
+</script>
+{% endblock %}

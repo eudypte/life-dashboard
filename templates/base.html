@@ -11,6 +11,7 @@
 <script>document.documentElement.classList.add("js"); try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "solarized-dark"; } catch (e) {}</script>
 </head>
 <body>
+{% block body %}
 <header class="top">
   <a class="brand" href="/">[ Life Dashboard ]</a>
   <span>{% block datebar %}<span class="dim">{{ today.strftime("%a %Y-%m-%d") }}</span>{% endblock %}
@@ -42,7 +43,8 @@
   <main class="main">{% block main %}{% endblock %}</main>
 </div>
 
-<footer>{% block footer %}read-only · refreshes every 60 s · weights in {{ unit }}{% endblock %}</footer>
+<footer>{% block footer %}read-only · refreshes every 60 s · weights in {{ unit }}{% endblock %}
+  {%- if signed_in %} · <form class="inline" method="post" action="/logout"><button class="link">log out</button></form>{% endif %}</footer>
 
 <script>
   const sel = document.getElementById("theme");
@@ -52,5 +54,6 @@
     try { localStorage.setItem("theme", sel.value); } catch (e) {}
   });
 </script>
+{% endblock %}
 </body>
 </html>

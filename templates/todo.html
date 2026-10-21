@@ -110,6 +110,7 @@
     input.timer = setTimeout(async () => {
       const f = input.form, sent = input.value;
       const r = await fetch("/todo/parse?" + new URLSearchParams({ q: sent, page: f.page.value, project: f.project?.value || "", label: f.label?.value || "", due: f.due?.value || "" }));
+      if (r.status === 401) return location.reload();  // signed out: the page reloads as the login
       if (!r.ok || input.value !== sent) return;
       const parsed = document.createRange().createContextualFragment(await r.text()).firstElementChild;
       input.toks = JSON.parse(parsed.dataset.tokens).map(([a, b, kind]) => [a, b, kind, sent.slice(a, b)]);
@@ -133,6 +134,7 @@
   // on any failure, reload to show what the server has.
   async function load(url, init) {
     const r = await fetch(url, init);
+    if (r.status === 401) return location.reload();  // signed out elsewhere: the page reloads as the login
     if (!r.ok) throw new Error(r.status);
     if (new URL(r.url).pathname !== location.pathname) return location.assign(r.url);
     const page = new DOMParser().parseFromString(await r.text(), "text/html");

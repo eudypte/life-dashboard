@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 SERVICE=life-dashboard
-HEALTH_URL=http://127.0.0.1:8090/
+HEALTH_URL=http://127.0.0.1:8090/calories  # public; / and /todo answer with the login form when signed out
 
 git fetch --quiet origin main
 old=$(git rev-parse HEAD)

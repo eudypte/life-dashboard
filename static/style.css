@@ -139,6 +139,19 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
 .add .plus { color: var(--accent); }
 .add input { flex: 1; min-width: 0; font: inherit; color: var(--hi); background: none; border: 0; outline: 0; padding: 2px 0; }
 .add input::placeholder { color: var(--dim); opacity: 1; }
+.login { min-height: calc(100vh - 46px); display: grid; place-items: center; }
+.login form { width: min(100%, 44ch); }
+.login label { display: block; color: var(--dim); margin-bottom: 4px; }
+.login .add { padding: 2px 4px 2px 8px; }
+.login p { margin: 6px 0 0; }
+.login .mask { position: relative; flex: 1; min-width: 0; display: flex; overflow: hidden; }
+.js .login .mask input { color: transparent; caret-color: var(--hi); }
+.login .blocks { position: absolute; top: 50%; height: .66ch; translate: .17ch -50%; pointer-events: none;
+  background: repeating-linear-gradient(90deg, var(--hi) 0 .66ch, transparent .66ch 1ch); }
+/* a password manager's fill: keep the theme, and show the browser's own dots until the next keystroke */
+.login .mask input:autofill { box-shadow: 0 0 0 99px var(--bg) inset; -webkit-text-fill-color: var(--hi); }
+.login .mask:has(input:autofill) .blocks { display: none; }
+.offscreen { position: absolute; left: -9999px; width: 1px; height: 1px; }
 /* quick-add box: the input's text is transparent over a mirror that colors the tokens the parser read */
 .hl { position: relative; display: grid; flex: 1; min-width: 0; }
 .hl > :is(.mirror, input) { grid-area: 1 / 1; min-width: 0; margin: 0; padding: 2px 0; border: 0; font: inherit; line-height: inherit; white-space: pre; }

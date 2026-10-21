@@ -9,6 +9,32 @@ It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing t
 - Environment variables with the same names override it, and `LIFE_DASHBOARD_SETTINGS` points at a different settings file.
 - Daily targets live in `config.toml` in this folder and are re-read on change.
 - `TODO_DB` is the todo list's SQLite file, default `~/.local/share/life-dashboard/todo.sqlite`. The app refuses to start if it is inside `NUTRITION_DIR`.
+- `LIFE_DASHBOARD_TOKEN` is the login token for the home page and `/todo` (see Login), set only in the environment, never in this repo.
+
+## Login
+
+The home page `/` and everything under `/todo` need a token; Calories, Macros, Weight and Presets stay public.
+A signed-out visit shows a single password box in place; the right token sets a cookie for a year that holds an HMAC of the token, never the token itself.
+Changing the token logs out every device.
+If `LIFE_DASHBOARD_TOKEN` is not set, the app still starts, logs a warning, and nothing unlocks.
+
+Generate a token (about 26 characters) and save it in your password manager:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(20)[:26])"
+```
+
+On the VM, put it in an environment file outside the repo; `life-dashboard.service` loads it with `EnvironmentFile=`.
+Unit files are not deployed automatically, so copy the unit once after this change:
+
+```bash
+install -m 600 /dev/null ~/.config/life-dashboard.env
+read -rs t && echo "LIFE_DASHBOARD_TOKEN=$t" > ~/.config/life-dashboard.env   # paste the token; it stays out of history
+cp ~/life-dashboard/life-dashboard.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user restart life-dashboard
+```
+
+To change the token, edit the file and restart the service.
 
 ## Layout on the VM
 
@@ -24,7 +50,7 @@ It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing t
 
 ```bash
 # on the Mac
-NUTRITION_DIR=~/path/to/Sync/nutrition TODO_DB=/tmp/todo.sqlite .venv/bin/uvicorn app:app --reload --port 8090
+NUTRITION_DIR=~/path/to/Sync/nutrition TODO_DB=/tmp/todo.sqlite LIFE_DASHBOARD_TOKEN=local-dev-token .venv/bin/uvicorn app:app --reload --port 8090
 .venv/bin/python -m unittest
 git commit -am "describe the change" && git push    # live within ~2 minutes
 ```
