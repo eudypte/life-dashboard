@@ -140,8 +140,8 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
 .add input { flex: 1; min-width: 0; font: inherit; color: var(--hi); background: none; border: 0; outline: 0; padding: 2px 0; }
 .add input::placeholder { color: var(--dim); opacity: 1; }
 /* quick-add box: the input's text is transparent over a mirror that colors the tokens the parser read */
-.hl { display: grid; flex: 1; min-width: 0; }
-.hl > * { grid-area: 1 / 1; min-width: 0; margin: 0; padding: 2px 0; border: 0; font: inherit; line-height: inherit; white-space: pre; }
+.hl { position: relative; display: grid; flex: 1; min-width: 0; }
+.hl > :is(.mirror, input) { grid-area: 1 / 1; min-width: 0; margin: 0; padding: 2px 0; border: 0; font: inherit; line-height: inherit; white-space: pre; }
 .hl > .mirror { overflow: hidden; color: var(--hi); pointer-events: none; }
 .js .hl > input { color: transparent; caret-color: var(--hi); }
 .tok.date, .tok.time { color: var(--c); } .tok.project { color: var(--accent); } .tok.repeat { color: var(--kcal); }
@@ -208,7 +208,8 @@ html:not(.js) .dayadd .close { display: none; }
 .suggest { position: absolute; z-index: 3; top: calc(100% + 2px); left: 0; min-width: 100%; max-height: 12em; overflow-y: auto; margin: 0; padding: 2px 0; list-style: none; background: var(--bg); border: 1px solid var(--accent); font-size: 12.5px; }
 .suggest li { padding: 1px 8px; color: var(--hi); white-space: nowrap; cursor: pointer; }
 .suggest li::before { content: "# "; color: var(--dim); }
-.multi .suggest li::before { content: "@ "; }
+.multi .suggest li::before, .suggest[data-sigil="@"] li::before { content: "@ "; }
+.hl > .suggest { min-width: 16ch; width: max-content; max-width: 100%; }
 .suggest li:hover, .suggest li.on { background: var(--bg2); color: var(--accent); }
 details.when { display: inline-block; position: relative; }
 details.when summary { display: inline; cursor: pointer; list-style: none; }

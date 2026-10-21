@@ -45,9 +45,11 @@
   {%- endif -%}
 {%- endmacro %}
 
-{# A quick-add text box: a mirror behind the input's transparent text colors the tokens the parser read (todo.html). #}
-{% macro quickadd_input(placeholder, label) -%}
-<span class="hl"><span class="mirror" aria-hidden="true"></span><input name="q" placeholder="{{ placeholder }}" autocomplete="off" spellcheck="false" aria-label="{{ label }}" required></span>
+{# A quick-add text box: a mirror behind the input's transparent text colors the tokens the parser read, and
+   typing # or @ lists existing projects or labels (todo.html). #}
+{% macro quickadd_input(placeholder, label, id) -%}
+<span class="hl"><span class="mirror" aria-hidden="true"></span><input name="q" placeholder="{{ placeholder }}" autocomplete="off" spellcheck="false" aria-label="{{ label }}" required
+  {#- #} role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ id }}"><ul class="suggest" id="{{ id }}" role="listbox" hidden></ul></span>
 {%- endmacro %}
 
 {# A native date input that shows only month and day: with JS the input is hidden behind the

@@ -25,7 +25,7 @@
   <legend>[ {{ legend }} ]</legend>
   <form class="add" id="quickadd" method="post" action="/todo/add">
     <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="project" value="{{ project or '' }}"><input type="hidden" name="label" value="{{ label or '' }}">
-    <span class="plus">+</span>{{ quickadd_input('add to #' ~ project ~ '…' if project else 'add to @' ~ label ~ '…' if label else 'add a task…', "quick add") }}
+    <span class="plus">+</span>{{ quickadd_input('add to #' ~ project ~ '…' if project else 'add to @' ~ label ~ '…' if label else 'add a task…', "quick add", "qsug") }}
     <button class="btn">add ⏎</button>
   </form>
   <div class="preview" aria-live="polite">{{ parsed(none, today, false) }}</div>
@@ -52,7 +52,7 @@
       <details class="dayadd" id="add-{{ g.day }}"><summary>+ add task</summary>
         <form class="add" method="post" action="/todo/add">
           <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="due" value="{{ g.day }}">
-          {{ quickadd_input("add to " ~ g.label ~ "…", "add a task on " ~ g.label) }}
+          {{ quickadd_input("add to " ~ g.label ~ "…", "add a task on " ~ g.label, "qsug-" ~ g.day) }}
           <button class="btn">add</button>
         </form>
         <div class="under"><span class="preview" aria-live="polite">{{ parsed(none, today, false) }}</span><button type="button" class="link close">cancel</button></div>
@@ -118,7 +118,7 @@
       if (line) line.innerHTML = parsed.innerHTML;
     }, 120);
   }
-  document.addEventListener("input", e => { if (e.target.matches(".hl > input")) read(e.target); });
+  document.addEventListener("input", e => { if (e.target.matches(".hl > input")) { read(e.target); suggestToken(e.target); } });
   for (const type of ["scroll", "keyup", "click", "select"])
     document.addEventListener(type, e => {
       if (e.target.matches?.(".hl > input")) e.target.previousElementSibling.scrollLeft = e.target.scrollLeft;
@@ -316,9 +316,19 @@
   });
   document.addEventListener("focusout", e => { if (e.target.matches(".combo input")) show(e.target, false); });
   document.addEventListener("input", e => { if (e.target.matches(".combo input")) suggest(e.target); });
+  function step(input, down) {
+    const items = [...input.nextElementSibling.children], n = items.length, at = items.findIndex(li => li.classList.contains("on"));
+    const i = down ? (at + 1) % n : (at <= 0 ? n : at) - 1;
+    items.forEach((li, k) => { li.classList.toggle("on", k === i); li.setAttribute("aria-selected", k === i); });
+    input.setAttribute("aria-activedescendant", items[i].id);
+    items[i].scrollIntoView({ block: "nearest" });
+  }
   document.addEventListener("mousedown", e => {
     const li = e.target.closest(".suggest li");
-    if (li) { e.preventDefault(); pick(li.parentElement.previousElementSibling, li); }
+    if (!li) return;
+    e.preventDefault();  // keep focus in the field
+    const input = li.parentElement.previousElementSibling;
+    (input.closest(".hl") ? acceptToken : pick)(input, li);
   });
   document.addEventListener("keydown", e => {
     const input = e.target;
@@ -327,10 +337,7 @@
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (list.hidden) return suggest(input);
-      const n = items.length, i = e.key === "ArrowDown" ? (at + 1) % n : (at <= 0 ? n : at) - 1;
-      items.forEach((li, k) => { li.classList.toggle("on", k === i); li.setAttribute("aria-selected", k === i); });
-      input.setAttribute("aria-activedescendant", items[i].id);
-      items[i].scrollIntoView({ block: "nearest" });
+      step(input, e.key === "ArrowDown");
     } else if (e.key === "Enter" && !list.hidden && at >= 0) {
       e.preventDefault();
       pick(input, items[at]);
@@ -339,6 +346,47 @@
       show(input, false);
     }
   });
+
+  // Add-task boxes: typing # or @ lists existing projects or labels, filtered by what follows. Arrows move,
+  // Enter or Tab accepts (Enter adds the task only while the list is closed), Escape closes, a click picks.
+  // Accepting completes the token where it is, plus a space; a name that matches nothing is still new.
+  function tokenAt(input) {
+    const m = input.value.slice(0, input.selectionStart).match(/(?:^|\s)([#@])([\w-]*)$/);
+    return m && { sigil: m[1], typed: m[2].toLowerCase(), start: input.selectionStart - m[2].length - 1 };
+  }
+  function suggestToken(input) {
+    const list = input.nextElementSibling, at = tokenAt(input);
+    const names = !at ? [] : [...document.querySelectorAll(at.sigil === "#" ? "#projects option" : "#labels option")]
+      .map(o => o.value).filter(n => n.includes(at.typed) && n !== at.typed)
+      .sort((a, b) => b.startsWith(at.typed) - a.startsWith(at.typed)).slice(0, 6);
+    list.dataset.sigil = at?.sigil || "#";
+    list.replaceChildren(...names.map((n, i) => Object.assign(document.createElement("li"), { textContent: n, id: `${list.id}-${i}`, role: "option" })));
+    show(input, names.length > 0);
+  }
+  function acceptToken(input, li) {
+    const at = tokenAt(input), v = input.value, rest = v.slice(input.selectionStart).replace(/^[\w-]*/, "");  // the rest of the word goes too
+    const token = `${at.sigil}${li.textContent} `;
+    input.value = v.slice(0, at.start) + token + rest.replace(/^ /, "");
+    input.setSelectionRange(at.start + token.length, at.start + token.length);
+    show(input, false);
+    read(input);
+  }
+  document.addEventListener("keydown", e => {  // capture: before the form submits or Escape closes a day's box
+    const input = e.target, list = input.nextElementSibling;
+    if (!input.matches?.(".hl > input") || list.hidden) return;
+    const items = [...list.children];
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") step(input, e.key === "ArrowDown");
+    else if (e.key === "Enter" || e.key === "Tab") acceptToken(input, items.find(li => li.classList.contains("on")) || items[0]);
+    else if (e.key === "Escape") show(input, false);
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  document.addEventListener("click", e => { if (e.target.matches(".hl > input")) suggestToken(e.target); });
+  document.addEventListener("keyup", e => {
+    if (e.target.matches(".hl > input") && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) suggestToken(e.target);
+  });
+  document.addEventListener("focusout", e => { if (e.target.matches(".hl > input")) show(e.target, false); });
 </script>
 {% endblock %}
 
