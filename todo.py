@@ -119,10 +119,14 @@ def tick(path: Path, task_id: int, today: dt.date) -> None:
             con.execute("UPDATE task SET done_on = ? WHERE id = ?", (today.isoformat(), task_id))
 
 
-def move(path: Path, task_id: int, due: dt.date) -> None:
-    """New due date, keeping time and repeat. A moved task can no longer undo its last tick."""
+def move(path: Path, task_id: int, due: dt.date | None) -> None:
+    """New due date, keeping time and repeat; no date also drops the time.
+    A moved task can no longer undo its last tick."""
     with _db(path) as con:
-        con.execute("UPDATE task SET due = ?, prev_due = NULL WHERE id = ?", (due.isoformat(), task_id))
+        if due:
+            con.execute("UPDATE task SET due = ?, prev_due = NULL WHERE id = ?", (due.isoformat(), task_id))
+        else:
+            con.execute("UPDATE task SET due = NULL, due_time = NULL, prev_due = NULL WHERE id = ?", (task_id,))
 
 
 def untick(path: Path, task_id: int) -> None:
@@ -163,6 +167,13 @@ def add_months(d: dt.date, n: int) -> dt.date:
     year, month = divmod(d.month - 1 + n, 12)
     year += d.year
     return dt.date(year, month + 1, min(d.day, calendar.monthrange(year, month + 1)[1]))
+
+
+def date_options(today: dt.date) -> list[tuple[str, str, dt.date | None]]:
+    """The date menu, as (form value, label, date)."""
+    weekend = today if today.weekday() >= 5 else next_weekday("sat", today)
+    return [("tomorrow", "tomorrow", today + dt.timedelta(days=1)), ("weekend", "this weekend", weekend),
+            ("next-week", "next week", next_weekday("mon", today)), ("none", "no date", None)]
 
 
 def first_due(rule: str, today: dt.date) -> dt.date:

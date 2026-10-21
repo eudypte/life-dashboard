@@ -8,7 +8,7 @@
 <link rel="icon" href="data:,">
 <title>{% block title %}Life Dashboard{% endblock %}</title>
 <link rel="stylesheet" href="/static/style.css?v={{ css_version }}">
-<script>try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "solarized-dark"; } catch (e) {}</script>
+<script>document.documentElement.classList.add("js"); try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "solarized-dark"; } catch (e) {}</script>
 </head>
 <body>
 <header class="top">

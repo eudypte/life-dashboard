@@ -36,7 +36,14 @@
   {%- endif -%}
 {%- endmacro %}
 
-{% macro task_row(t, g, here, edit, today, rules, show_project, inline=false) -%}
+{# A native date input that shows only month and day: with JS the input is hidden behind the
+   label and its calendar opens on click (see todo.html), so any year can still be picked. #}
+{% macro datefield(name, value, required=false) -%}
+<label class="datefield"><span class="shown{{ ' dim' if not value }}">{{ value.strftime("%b ") ~ value.day if value else "pick a date" }}</span>
+  {#- #}<input type="date" name="{{ name }}" value="{{ value or '' }}" aria-label="date"{{ " required" if required }}></label>
+{%- endmacro %}
+
+{% macro task_row(t, g, here, edit, today, rules, show_project, options) -%}
 {%- set pri = " p" ~ t.priority if t.priority < 4 and not g.done else "" %}
 {%- if edit == t.id %}
 <div class="t editing" id="t{{ t.id }}">
@@ -45,7 +52,7 @@
     <input type="hidden" name="next" value="{{ here }}">
     <input class="title" name="title" value="{{ t.title }}" aria-label="task name" required>
     <div class="fields">
-      <label>due <input type="date" name="due" value="{{ t.due or '' }}"></label>
+      <span>due {{ datefield("due", t.due) }}</span>
       <label>time <input type="time" name="due_time" value="{{ t.due_time or '' }}"></label>
       <label>priority <select name="priority">{% for p in range(1, 5) %}<option value="{{ p }}"{% if p == t.priority %} selected{% endif %}>p{{ p }}{{ " (none)" if p == 4 }}</option>{% endfor %}</select></label>
       <label>project <input class="proj" name="project" list="projects" value="{{ t.project or '' }}" placeholder="inbox"></label>
@@ -59,7 +66,7 @@
   </form>
 </div>
 {%- else %}
-<div class="t{{ ' done' if g.done }}{{ ' inline' if inline }}" id="t{{ t.id }}">
+<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}">
   <form class="tick" method="post" action="/todo/{{ t.id }}/done"><input type="hidden" name="next" value="{{ here }}">
     {%- if g.done %}<input type="hidden" name="undo" value="1">{% endif -%}
     <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>
@@ -68,8 +75,11 @@
     {%- set w = t | task_when(g, today) %}
     {%- if w %}<details class="when"><summary{% if w[1] %} class="{{ w[1] }}"{% endif %} title="move to another day">{{ w[0] }}</summary>
       <div class="menu">
-        <form method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}"><button class="item" name="due" value="tomorrow">tomorrow</button></form>
-        <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}"><input type="date" name="due" value="{{ t.due or '' }}" aria-label="due date" required><button class="btn">set</button></form>
+        <form class="opts" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">
+          {%- for value, label, d in options %}
+          <button class="item{{ ' cur' if d == t.due }}" name="due" value="{{ value }}"{% if d == t.due %} aria-current="true"{% endif %}>{{ label }}{% if d %}<span class="dim">{{ d.strftime("%a %d") }}</span>{% endif %}</button>
+          {%- endfor %}</form>
+        <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">{{ datefield("due", t.due, true) }}<button class="btn">set</button></form>
       </div></details>{% endif %}
     {%- for text, cls in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endfor -%}
   </span>

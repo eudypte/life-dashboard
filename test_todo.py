@@ -118,6 +118,9 @@ class StoreTest(unittest.TestCase):
         todo.move(self.db, r, d(10, 30))
         t = todo.get(self.db, r)
         self.assertEqual((t["due"], t["due_time"], t["repeat"], t["prev_due"]), (d(10, 30), "09:00", "every weekday", None))
+        todo.move(self.db, r, None)  # no date also drops the time
+        t = todo.get(self.db, r)
+        self.assertEqual((t["due"], t["due_time"], t["repeat"]), (None, None, "every weekday"))
 
     def test_update_and_delete(self):
         a = self.add("x tomorrow")
@@ -136,6 +139,21 @@ class StoreTest(unittest.TestCase):
             self.assertEqual(todo.db_path(Path(self.tmp.name) / "other").name, "todo.sqlite")
         finally:
             os.environ.pop("TODO_DB") if old is None else os.environ.update(TODO_DB=old)
+
+
+class DateOptionsTest(unittest.TestCase):
+    def test_weekend_is_today_on_a_weekend(self):
+        cases = {T: (d(10, 21), d(10, 24), d(10, 26)),            # Tue
+                 d(10, 23): (d(10, 24), d(10, 24), d(10, 26)),    # Fri: tomorrow is the weekend
+                 d(10, 24): (d(10, 25), d(10, 24), d(10, 26)),    # Sat
+                 d(10, 25): (d(10, 26), d(10, 25), d(10, 26)),    # Sun
+                 d(10, 26): (d(10, 27), d(10, 31), d(11, 2))}     # Mon: next week is a week away
+        for today, dates in cases.items():
+            with self.subTest(today=today):
+                opts = todo.date_options(today)
+                self.assertEqual(tuple(x[2] for x in opts[:3]), dates)
+                self.assertEqual(opts[2][2], todo.parse("x next week", today)["due"])
+                self.assertEqual(opts[3], ("none", "no date", None))
 
 
 class ViewTest(unittest.TestCase):

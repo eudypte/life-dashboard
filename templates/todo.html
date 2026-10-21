@@ -36,7 +36,7 @@
   <div class="tasks">
   {% for g in groups if g.rows or g.keep %}
     <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">· {{ g.note }}</span>{% endif %} <span class="dim">· {{ g.rows | length or "nothing" }}</span></div>
-    {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project", page == "inbox") }}{% endfor %}</div>{% endif %}
+    {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project", date_options) }}{% endfor %}</div>{% endif %}
   {% else %}
     <p class="empty">nothing here</p>
   {% endfor %}
@@ -77,6 +77,13 @@
   });
   document.addEventListener("click", e => {
     for (const d of document.querySelectorAll("details.when[open]")) if (!d.contains(e.target)) d.open = false;
+    const field = e.target.closest(".datefield");
+    if (field) {
+      e.preventDefault();
+      const input = field.querySelector("input");
+      try { input.showPicker(); } catch { input.focus(); }
+      return;
+    }
     const a = e.target.closest(".tasks a[href]");
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
@@ -85,9 +92,15 @@
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") for (const d of document.querySelectorAll("details.when[open]")) d.open = false;
   });
-  // A picked date moves the task at once; the year check skips half-typed years like 0002.
+  // Date fields show month and day only. In the menu a picked date moves the task at once;
+  // the year check skips half-typed years like 0002 from the keyboard.
   document.addEventListener("change", e => {
-    if (e.target.matches(".when [type=date]") && /^[1-9]\d{3}-/.test(e.target.value)) e.target.form.requestSubmit();
+    const input = e.target;
+    if (!input.matches(".datefield input")) return;
+    const [y, m, d] = input.value.split("-").map(Number), shown = input.previousElementSibling;
+    shown.textContent = input.value ? new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "pick a date";
+    shown.classList.toggle("dim", !input.value);
+    if (input.closest(".when") && /^[1-9]\d{3}-/.test(input.value)) input.form.requestSubmit();
   });
 </script>
 {% endblock %}

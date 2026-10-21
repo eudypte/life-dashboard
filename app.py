@@ -186,6 +186,7 @@ def todo_render(request: Request, page: str, project: str | None = None, edit: i
         request, "todo.html", "todo", page=page, project=project, groups=groups, counts=todo.counts(ts, today),
         here="/todo/project/" + quote(project, safe="") if project else {"today": "/todo"}.get(page, "/todo/" + page),
         edit=edit, added=todo.get(TODO_DB, added) if added else None, ticked=ticked, rules=todo.RULES,
+        date_options=todo.date_options(today),
     )
 
 
@@ -255,11 +256,12 @@ async def todo_edit(request: Request, task_id: int):
 
 @app.post("/todo/{task_id}/due")
 async def todo_due(request: Request, task_id: int):
-    """The date menu: "tomorrow" or a picked ISO date."""
+    """The date menu: one of its options ("none" clears the date) or a picked ISO date."""
     f = await form(request)
-    today = data.logical_today(CFG)
-    due = today + dt.timedelta(days=1) if f.get("due") == "tomorrow" else todo.iso_date(f.get("due", ""))
-    if due:
+    options = {value: d for value, _, d in todo.date_options(data.logical_today(CFG))}
+    if f.get("due") in options:
+        todo.move(TODO_DB, task_id, options[f["due"]])
+    elif due := todo.iso_date(f.get("due", "")):
         todo.move(TODO_DB, task_id, due)
     return back(f, task_id=task_id)
 
