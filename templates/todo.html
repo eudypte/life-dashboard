@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_ui.html" import task_row, parsed, quickadd_input %}
-{% set legend = {"today": "Today · " ~ today.strftime("%a %b ") ~ today.day, "inbox": "Inbox", "upcoming": "Upcoming"}.get(page, "# " ~ project) %}
+{% set legend = {"today": "Today · " ~ today.strftime("%a %b ") ~ today.day, "inbox": "Inbox", "upcoming": "Upcoming"}.get(page, "@ " ~ label if label else "# " ~ project) %}
 {% block title %}Todo · Life Dashboard{% endblock %}
 {% block refresh %}{% endblock %}{# a refresh would wipe a half-typed task #}
 
@@ -13,6 +13,10 @@
   {% for name, n in counts.projects %}
   <a href="/todo/project/{{ name | urlencode }}" data-project="{{ name }}" data-count="{{ n }}"{% if page == "project" and project == name %} aria-current="page"{% endif %}># {{ name }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>
   {% endfor %}
+  {% if counts.labels %}<div class="subsep"></div>{% endif %}
+  {% for name, n, color in counts.labels %}
+  <a href="/todo/label/{{ name | urlencode }}" class="lc-{{ color }}" data-label="{{ name }}" data-count="{{ n }}" data-color="{{ color }}"{% if page == "label" and label == name %} aria-current="page"{% endif %}>@ {{ name }}{% if n %}<span class="n">{{ n }}</span>{% endif %}</a>
+  {% endfor %}
 </div>
 {% endblock %}
 
@@ -20,8 +24,8 @@
 <fieldset class="span2">
   <legend>[ {{ legend }} ]</legend>
   <form class="add" id="quickadd" method="post" action="/todo/add">
-    <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="project" value="{{ project or '' }}">
-    <span class="plus">+</span>{{ quickadd_input('add to #' ~ project ~ '…' if project else 'add a task…', "quick add") }}
+    <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="project" value="{{ project or '' }}"><input type="hidden" name="label" value="{{ label or '' }}">
+    <span class="plus">+</span>{{ quickadd_input('add to #' ~ project ~ '…' if project else 'add to @' ~ label ~ '…' if label else 'add a task…', "quick add") }}
     <button class="btn">add ⏎</button>
   </form>
   <div class="preview" aria-live="polite">{{ parsed(none, today, false) }}</div>
@@ -68,15 +72,23 @@
   </div>
   {% endif %}
 </fieldset>
+{# right-click (long-press) menu for a project or a label; todo.html's script fills it in #}
 <div class="ctx" id="ctx" role="menu" hidden>
   <div class="ctx-head"></div>
-  <div class="ctx-main"><button type="button" class="item" data-mode="rename">rename</button><button type="button" class="item warn" data-mode="delete">delete</button></div>
+  <div class="ctx-main">
+    <button type="button" class="item" data-mode="rename">rename</button>
+    <button type="button" class="item for-label" data-mode="color">color</button>
+    <button type="button" class="item warn" data-mode="delete">delete</button>
+  </div>
   <form class="ctx-rename" method="post" data-verb="rename"><input type="hidden" name="next" value="{{ here }}">
-    <input name="name" aria-label="new project name" autocomplete="off" spellcheck="false" required><button class="btn">rename</button></form>
+    <input name="name" aria-label="new name" autocomplete="off" spellcheck="false" required><button class="btn">rename</button></form>
+  <form class="ctx-color" method="post" data-verb="color"><input type="hidden" name="next" value="{{ here }}">
+    {%- for c in palette %}<button class="swatch lc-{{ c }}" name="color" value="{{ c }}" aria-label="color {{ loop.index }}"></button>{% endfor %}</form>
   <form class="ctx-delete" method="post" data-verb="delete"><input type="hidden" name="next" value="{{ here }}">
-    <p>Delete <span class="hi ctx-name"></span>? Its <span class="ctx-count"></span> to the inbox.</p><button class="btn">yes, delete</button></form>
+    <p class="ctx-text"></p><button class="btn">yes, delete</button></form>
 </div>
 <datalist id="projects">{% for name, n in counts.projects %}<option value="{{ name }}">{% endfor %}</datalist>
+<datalist id="labels">{% for name, n, color in counts.labels %}<option value="{{ name }}">{% endfor %}</datalist>
 <script>
   // Quick add: the line under each box shows what the parser read, and the tokens it read are colored inside
   // the box (a mirror behind the input's transparent text). The parser is the server's; the forms work without this.
@@ -97,7 +109,7 @@
     clearTimeout(input.timer);
     input.timer = setTimeout(async () => {
       const f = input.form, sent = input.value;
-      const r = await fetch("/todo/parse?" + new URLSearchParams({ q: sent, page: f.page.value, project: f.project?.value || "", due: f.due?.value || "" }));
+      const r = await fetch("/todo/parse?" + new URLSearchParams({ q: sent, page: f.page.value, project: f.project?.value || "", label: f.label?.value || "", due: f.due?.value || "" }));
       if (!r.ok || input.value !== sent) return;
       const parsed = document.createRange().createContextualFragment(await r.text()).firstElementChild;
       input.toks = JSON.parse(parsed.dataset.tokens).map(([a, b, kind]) => [a, b, kind, sent.slice(a, b)]);
@@ -121,7 +133,7 @@
     if (new URL(r.url).pathname !== location.pathname) return location.assign(r.url);
     const page = new DOMParser().parseFromString(await r.text(), "text/html");
     const row = document.activeElement?.closest(".t")?.id, x = document.querySelector(".tasks").scrollLeft;
-    for (const sel of [".flashes", ".tasks", ".nav .sub", "#projects"]) document.querySelector(sel).replaceWith(page.querySelector(sel));
+    for (const sel of [".flashes", ".tasks", ".nav .sub", "#projects", "#labels"]) document.querySelector(sel).replaceWith(page.querySelector(sel));
     document.querySelector(".tasks").scrollLeft = x;  // the Upcoming board scrolls sideways
     if (row) document.querySelector(`#${row} .box`)?.focus();
   }
@@ -176,21 +188,27 @@
     if (input.closest(".when") && /^[1-9]\d{3}-/.test(input.value)) input.form.requestSubmit();
   });
 
-  // Projects: right-click a project, in the nav or on a task, for rename and delete; long-press on a touch
-  // screen. Deleting moves the project's tasks to the inbox.
-  const ctx = document.getElementById("ctx");
+  // Projects and labels: right-click one, in the nav or on a task, for rename, color (labels) and delete;
+  // long-press on a touch screen. Deleting a project moves its tasks to the inbox; deleting a label takes it
+  // off its tasks. Tasks are never deleted with either.
+  const ctx = document.getElementById("ctx"), MARKED = "a[data-project], a[data-label]";
   let press = null;
   function fit() {
     ctx.style.left = `${Math.max(8, Math.min(parseFloat(ctx.style.left), innerWidth - ctx.offsetWidth - 8))}px`;
     ctx.style.top = `${Math.max(8, Math.min(parseFloat(ctx.style.top), innerHeight - ctx.offsetHeight - 8))}px`;
   }
   function openCtx(link, x, y) {
-    const name = link.dataset.project, n = +(document.querySelector(`.nav [data-project="${CSS.escape(name)}"]`)?.dataset.count || 0);
-    for (const f of ctx.querySelectorAll("form")) f.action = `/todo/project/${encodeURIComponent(name)}/${f.dataset.verb}`;
-    ctx.querySelector(".ctx-head").textContent = `# ${name}`;
-    ctx.querySelector(".ctx-name").textContent = `#${name}`;
-    ctx.querySelector(".ctx-count").textContent = n ? `${n} open task${n === 1 ? "" : "s"} move` : "tasks move";
+    const kind = link.dataset.project ? "project" : "label", name = link.dataset[kind];
+    const inNav = document.querySelector(`.nav [data-${kind}="${CSS.escape(name)}"]`);
+    const n = +(inNav?.dataset.count || 0), tasks = `${n} open task${n === 1 ? "" : "s"}`, mark = kind === "project" ? "#" : "@";
+    for (const f of ctx.querySelectorAll("form")) f.action = `/todo/${kind}/${encodeURIComponent(name)}/${f.dataset.verb}`;
+    ctx.querySelector(".ctx-head").textContent = `${mark} ${name}`;
+    ctx.querySelector(".ctx-text").textContent = kind === "project"
+      ? `Delete #${name}? Its ${n ? tasks : "tasks"} move${n === 1 ? "s" : ""} to the inbox.`
+      : `Delete @${name}? It comes off ${n ? `its ${tasks}` : "its tasks"}; the tasks stay.`;
+    for (const b of ctx.querySelectorAll(".swatch")) b.toggleAttribute("aria-current", b.value === inNav?.dataset.color);
     ctx.querySelector("[name=name]").value = name;
+    ctx.dataset.kind = kind;
     ctx.dataset.mode = "";
     ctx.hidden = false;
     ctx.style.left = `${x}px`;
@@ -198,7 +216,7 @@
     fit();
   }
   document.addEventListener("contextmenu", e => {
-    const link = e.target.closest("a[data-project]");
+    const link = e.target.closest(MARKED);
     if (!link) return;
     e.preventDefault();
     openCtx(link, e.clientX, e.clientY);
@@ -208,10 +226,11 @@
     if (!mode) return;
     ctx.dataset.mode = mode;
     fit();
-    ctx.querySelector(mode === "rename" ? "[name=name]" : ".ctx-delete .btn").focus();
+    const target = { rename: "[name=name]", color: ".swatch[aria-current]", delete: ".ctx-delete .btn" }[mode];
+    (ctx.querySelector(target) || ctx.querySelector(".swatch")).focus();
   });
   document.addEventListener("touchstart", e => {
-    const link = e.target.closest?.("a[data-project]");
+    const link = e.target.closest?.(MARKED);
     if (!link) return;
     const { clientX: x, clientY: y } = e.touches[0];
     press = setTimeout(() => { press = "open"; openCtx(link, x, y); }, 500);
@@ -266,26 +285,34 @@
     ph.remove();
   });
 
-  // Project field in the edit form: themed suggestions in place of the browser's datalist dropdown,
-  // which still shows without JS. Filters the existing names; any new name is still allowed.
+  // Project and labels fields in the edit form: themed suggestions in place of the browser's datalist
+  // dropdown, which still shows without JS. Filters the existing names; any new name is still allowed.
+  // The labels field (.multi) takes several, comma separated: suggestions are for the last one.
   function show(input, open) {
     input.nextElementSibling.hidden = !open;
     input.setAttribute("aria-expanded", open);
     input.removeAttribute("aria-activedescendant");
   }
+  const terms = input => input.value.split(",").map(x => x.trim().replace(/^[#@]/, "").toLowerCase());
   function suggest(input) {
-    const list = input.nextElementSibling, typed = input.value.trim().replace(/^#/, "").toLowerCase();
-    const names = [...document.querySelectorAll("#projects option")].map(o => o.value)
-      .filter(n => n.includes(typed) && n !== typed).sort((a, b) => b.startsWith(typed) - a.startsWith(typed));
+    const list = input.nextElementSibling, multi = input.closest(".multi"), all = terms(input);
+    const typed = multi ? all.pop() : input.value.trim().replace(/^#/, "").toLowerCase();
+    const names = [...document.querySelectorAll(`#${input.dataset.list} option`)].map(o => o.value)
+      .filter(n => n.includes(typed) && n !== typed && !(multi && all.includes(n)))
+      .sort((a, b) => b.startsWith(typed) - a.startsWith(typed));
     list.replaceChildren(...names.map((n, i) => Object.assign(document.createElement("li"), { textContent: n, id: `${list.id}-${i}`, role: "option" })));
     show(input, names.length > 0);
   }
   function pick(input, li) {
-    input.value = li.textContent;
+    input.value = input.closest(".multi") ? [...terms(input).slice(0, -1), li.textContent].join(", ") + ", " : li.textContent;
     show(input, false);
   }
   document.addEventListener("focusin", e => {
-    if (e.target.matches(".combo input")) { e.target.removeAttribute("list"); suggest(e.target); }
+    const input = e.target;
+    if (!input.matches(".combo input")) return;
+    input.dataset.list ||= input.getAttribute("list");
+    input.removeAttribute("list");
+    suggest(input);
   });
   document.addEventListener("focusout", e => { if (e.target.matches(".combo input")) show(e.target, false); });
   document.addEventListener("input", e => { if (e.target.matches(".combo input")) suggest(e.target); });

@@ -19,6 +19,13 @@ class ParseTest(unittest.TestCase):
     def p(self, text, **defaults):
         return todo.parse(text, T, **defaults)
 
+    def test_labels(self):
+        t = self.p("call bank @Errand fri @phone @errand")
+        self.assertEqual((t["title"], t["labels"], t["due"]), ("call bank", ["errand", "phone"], d(10, 23)))
+        self.assertEqual([k for *_, k in t["tokens"]], ["label", "date", "label", "label"])
+        self.assertEqual(self.p("x @home", label="errand")["labels"], ["home", "errand"])  # a label page's default
+        self.assertEqual(self.p("email me@example.com")["labels"], [])  # only whole words
+
     def test_token_spans_for_highlighting(self):
         text = "submit lab report thu 5pm p1 #School every week"
         t = self.p(text)
@@ -75,8 +82,9 @@ class ParseTest(unittest.TestCase):
     def test_edit_form_is_checked(self):
         f = todo.from_form({"title": "  pay  rent ", "due": "", "due_time": "25:00", "priority": "9",
                             "project": "#Side Project", "repeat": "every month"}, T)
-        self.assertEqual(f, {"title": "pay rent", "project": "side-project", "priority": 4, "due": T,
+        self.assertEqual(f, {"title": "pay rent", "project": "side-project", "labels": [], "priority": 4, "due": T,
                              "due_time": None, "repeat": "every month"})
+        self.assertEqual(todo.from_form({"title": "x", "labels": "@Errand, phone,, errand"}, T)["labels"], ["errand", "phone"])
         self.assertIsNone(todo.from_form({"title": " "}, T))
         self.assertIsNone(todo.from_form({"title": "x", "repeat": "every ; drop"}, T)["repeat"])
 
@@ -113,7 +121,8 @@ class StoreTest(unittest.TestCase):
         self.assertEqual({t["id"]: (t["due"], t["done_on"]) for t in ts}, {a: (None, T), r: (d(10, 27), T)})
         g = {x["label"]: [t["id"] for t in x["rows"]] for x in todo.groups(ts, T, "today")}
         self.assertEqual((g["today"], g["done"]), ([], [a, r]))
-        self.assertEqual(todo.counts(ts, T, todo.projects(self.db)), {"inbox": 0, "today": 0, "projects": [("home", 1)]})
+        self.assertEqual(todo.counts(ts, T, todo.projects(self.db), {}),
+                         {"inbox": 0, "today": 0, "projects": [("home", 1)], "labels": []})
         # tomorrow only the repeat is left; the finished task is gone
         self.assertEqual([t["id"] for t in todo.tasks(self.db, d(10, 21))], [r])
         todo.untick(self.db, r)
@@ -163,7 +172,7 @@ class StoreTest(unittest.TestCase):
         todo.tick(self.db, a, T)
         todo.tick(self.db, b, T)
         self.assertEqual(todo.projects(self.db), ["home"])  # still there with no open task
-        self.assertEqual(todo.counts(todo.tasks(self.db, d(10, 21)), T, todo.projects(self.db))["projects"], [("home", 0)])
+        self.assertEqual(todo.counts(todo.tasks(self.db, d(10, 21)), T, todo.projects(self.db), {})["projects"], [("home", 0)])
         c = self.add("c #code")
         todo.rename_project(self.db, "home", "house")
         self.assertEqual((todo.projects(self.db), todo.get(self.db, a)["project"]), (["code", "house"], "house"))
@@ -171,6 +180,31 @@ class StoreTest(unittest.TestCase):
         self.assertEqual((todo.projects(self.db), todo.get(self.db, c)["project"]), (["house"], "house"))
         todo.delete_project(self.db, "house")  # tasks move to the inbox, never deleted
         self.assertEqual((todo.projects(self.db), todo.get(self.db, c)["project"]), ([], None))
+
+    def test_labels_persist_rename_color_and_delete(self):
+        a = todo.add(self.db, todo.parse("a @errand @phone", T), dt.datetime(2026, 10, 20, 9))
+        b = todo.add(self.db, todo.parse("b @errand", T), dt.datetime(2026, 10, 20, 9))
+        self.assertEqual(todo.get(self.db, a)["labels"], [("errand", todo.default_color("errand")), ("phone", todo.default_color("phone"))])
+        todo.color_label(self.db, "errand", "warn")
+        todo.color_label(self.db, "errand", "pink")  # not in the palette: ignored
+        self.assertEqual(todo.label_colors(self.db)["errand"], "warn")
+        todo.tick(self.db, b, T)
+        ts = todo.tasks(self.db, d(10, 21))
+        c = todo.counts(ts, T, [], todo.label_colors(self.db))
+        self.assertEqual(c["labels"], [("errand", 1, "warn"), ("phone", 1, todo.default_color("phone"))])
+        self.assertEqual([t["title"] for g in todo.groups(ts, T, "label", "errand") for t in g["rows"]], ["a"])
+        todo.update(self.db, a, {**todo.from_form({"title": "a", "labels": "phone"}, T)})  # the edit form replaces them
+        self.assertEqual([n for n, _ in todo.get(self.db, a)["labels"]], ["phone"])
+        todo.update(self.db, a, {**todo.from_form({"title": "a", "labels": "phone, errand"}, T)})
+        todo.rename_label(self.db, "phone", "errand")  # onto an existing label: merged, keeps errand's color
+        self.assertEqual(todo.get(self.db, a)["labels"], [("errand", "warn")])
+        self.assertEqual(sorted(todo.label_colors(self.db)), ["errand"])
+        todo.rename_label(self.db, "errand", "out")
+        self.assertEqual(todo.get(self.db, a)["labels"], [("out", "warn")])
+        todo.delete_label(self.db, "out")  # comes off the tasks; the tasks stay
+        self.assertEqual((todo.get(self.db, a)["labels"], todo.label_colors(self.db)), ([], {}))
+        todo.delete(self.db, b)
+        self.assertIsNone(todo.get(self.db, b))
 
     def test_old_files_gain_the_new_columns(self):
         old = Path(self.tmp.name) / "old.sqlite"
@@ -264,6 +298,8 @@ class ViewTest(unittest.TestCase):
         self.assertIsNone(todo.when(t, done_group, T))
         self.assertEqual(todo.meta(t, date_group, T, True), [("↻ weekly", "", ""), ("#home", "", "/todo/project/home")])
         self.assertEqual(todo.meta(t, done_group, T, False), [("↻ next Oct 18", "", "")])
+        labelled = {**self.task(7, T, "home"), "labels": [("errand", "c")]}
+        self.assertEqual(todo.meta(labelled, date_group, T, True)[-1], ("@errand", "lab lc-c", "/todo/label/errand"))
         card = {"done": False, "mode": "time", "board": True}  # Upcoming board cards name the inbox too
         self.assertEqual(todo.meta(self.task(5, T), card, T, True), [("inbox", "", "/todo/inbox")])
         self.assertEqual(todo.meta(self.task(6, T), date_group, T, True), [])

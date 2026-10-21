@@ -7,7 +7,7 @@ import datetime as dt
 import os
 import re
 import sqlite3
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import quote
@@ -27,7 +27,11 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS task (
   pos        INTEGER,                    -- order within a day: the last task added or moved there comes last
   day_order  INTEGER                     -- placed by drag and drop: this slot in its day, above unplaced tasks
 );
-CREATE TABLE IF NOT EXISTS project (name TEXT PRIMARY KEY)  -- kept even when no task uses it"""
+CREATE TABLE IF NOT EXISTS project (name TEXT PRIMARY KEY);  -- kept even when no task uses it
+CREATE TABLE IF NOT EXISTS label (name TEXT PRIMARY KEY, color TEXT NOT NULL);  -- color: one of PALETTE
+CREATE TABLE IF NOT EXISTS task_label (task_id INTEGER NOT NULL, label TEXT NOT NULL, PRIMARY KEY (task_id, label))"""
+# Label colors: the theme's own color variables (static/style.css .lc-*), so every theme has them.
+PALETTE = ("p", "c", "f", "kcal", "accent", "warn")
 NEXT_POS = "(SELECT COALESCE(MAX(COALESCE(pos, id)), 0) + 1 FROM task)"
 # The edit form's choices; quick add can also make "every 3 days" and the like.
 RULES = ("every day", "every weekday", "every week", "every 2 weeks", "every month", "every year")
@@ -84,18 +88,29 @@ def _params(t: dict) -> dict:
     return {**t, "due": t["due"].isoformat() if t["due"] else None}
 
 
+def _with_labels(con, ts: list[dict]) -> list[dict]:
+    """Each task's labels, as (name, color) sorted by name."""
+    labels = defaultdict(list)
+    for row in con.execute("SELECT tl.task_id, l.name, l.color FROM task_label tl JOIN label l ON l.name = tl.label"
+                           " ORDER BY l.name"):
+        labels[row[0]].append((row[1], row[2]))
+    for t in ts:
+        t["labels"] = labels[t["id"]]
+    return ts
+
+
 def tasks(path: Path, today: dt.date) -> list[dict]:
     """Open tasks plus anything ticked today; older finished tasks are never shown."""
     with _db(path) as con:
         rows = con.execute("SELECT * FROM task WHERE done_on IS NULL OR repeat IS NOT NULL OR done_on = ?",
                            (today.isoformat(),)).fetchall()
-    return [_task(r) for r in rows]
+        return _with_labels(con, [_task(r) for r in rows])
 
 
 def get(path: Path, task_id: int) -> dict | None:
     with _db(path) as con:
         row = con.execute("SELECT * FROM task WHERE id = ?", (task_id,)).fetchone()
-    return _task(row) if row else None
+        return _with_labels(con, [_task(row)])[0] if row else None
 
 
 def _keep_project(con, name: str | None) -> None:
@@ -104,13 +119,28 @@ def _keep_project(con, name: str | None) -> None:
         con.execute("INSERT OR IGNORE INTO project (name) VALUES (?)", (name,))
 
 
+def default_color(name: str) -> str:
+    """A new label's color, from its name, so the quick-add preview can show it before the label exists."""
+    return PALETTE[sum(name.encode()) % len(PALETTE)]
+
+
+def _set_labels(con, task_id: int, names: list[str]) -> None:
+    """The task's labels become exactly `names`; a label exists from its first use until it is deleted."""
+    con.execute("DELETE FROM task_label WHERE task_id = ?", (task_id,))
+    for name in names:
+        con.execute("INSERT OR IGNORE INTO label (name, color) VALUES (?, ?)", (name, default_color(name)))
+        con.execute("INSERT OR IGNORE INTO task_label (task_id, label) VALUES (?, ?)", (task_id, name))
+
+
 def add(path: Path, t: dict, now: dt.datetime) -> int:
     with _db(path) as con:
         _keep_project(con, t["project"])
-        return con.execute(
+        task_id = con.execute(
             "INSERT INTO task (title, project, priority, due, due_time, repeat, created_at, pos)"
             f" VALUES (:title, :project, :priority, :due, :due_time, :repeat, :created_at, {NEXT_POS})",
             {**_params(t), "created_at": now.isoformat(timespec="seconds")}).lastrowid
+        _set_labels(con, task_id, t.get("labels", []))
+        return task_id
 
 
 def update(path: Path, task_id: int, t: dict) -> None:
@@ -121,11 +151,13 @@ def update(path: Path, task_id: int, t: dict) -> None:
                     " due_time = :due_time, repeat = :repeat, prev_due = NULL,"
                     " day_order = CASE WHEN due IS :due THEN day_order END WHERE id = :id",
                     {**_params(t), "id": task_id})
+        _set_labels(con, task_id, t.get("labels", []))
 
 
 def delete(path: Path, task_id: int) -> None:
     with _db(path) as con:
         con.execute("DELETE FROM task WHERE id = ?", (task_id,))
+        con.execute("DELETE FROM task_label WHERE task_id = ?", (task_id,))
 
 
 def tick(path: Path, task_id: int, today: dt.date) -> None:
@@ -176,6 +208,34 @@ def rename_project(path: Path, old: str, new: str) -> None:
         _keep_project(con, new)
         con.execute("UPDATE task SET project = ? WHERE project = ?", (new, old))
         con.execute("DELETE FROM project WHERE name = ? AND name != ?", (old, new))
+
+
+def label_colors(path: Path) -> dict[str, str]:
+    with _db(path) as con:
+        return dict(con.execute("SELECT name, color FROM label ORDER BY name").fetchall())
+
+
+def rename_label(path: Path, old: str, new: str) -> None:
+    """Renames everywhere, keeping the color. Renaming onto an existing label merges the two."""
+    with _db(path) as con:
+        row = con.execute("SELECT color FROM label WHERE name = ?", (old,)).fetchone()
+        con.execute("INSERT OR IGNORE INTO label (name, color) VALUES (?, ?)", (new, row[0] if row else default_color(new)))
+        con.execute("UPDATE OR IGNORE task_label SET label = ? WHERE label = ?", (new, old))
+        con.execute("DELETE FROM task_label WHERE label = ? AND label != ?", (old, new))  # already had both
+        con.execute("DELETE FROM label WHERE name = ? AND name != ?", (old, new))
+
+
+def color_label(path: Path, name: str, color: str) -> None:
+    if color in PALETTE:
+        with _db(path) as con:
+            con.execute("UPDATE label SET color = ? WHERE name = ?", (color, name))
+
+
+def delete_label(path: Path, name: str) -> None:
+    """The label comes off its tasks; the tasks stay."""
+    with _db(path) as con:
+        con.execute("DELETE FROM task_label WHERE label = ?", (name,))
+        con.execute("DELETE FROM label WHERE name = ?", (name,))
 
 
 def delete_project(path: Path, name: str) -> None:
@@ -267,9 +327,10 @@ def project_name(s: str) -> str | None:
     return "-".join(re.findall(r"[\w-]+", s.lower())) or None
 
 
-def parse(text: str, today: dt.date, due: dt.date | None = None, project: str | None = None) -> dict:
+def parse(text: str, today: dt.date, due: dt.date | None = None, project: str | None = None,
+          label: str | None = None) -> dict:
     """Quick-add text to task fields. Tokens are whole words; whatever is left is the title.
-    `due` and `project` are the defaults of the page it was typed on.
+    `due`, `project` and `label` are the defaults of the page it was typed on.
     "tokens" lists where each recognised token sits in `text`, as (start, end, kind), for highlighting."""
     s = f" {text} "
     tokens = []
@@ -313,6 +374,11 @@ def parse(text: str, today: dt.date, due: dt.date | None = None, project: str | 
                      or take(r"\s([01]?\d|2[0-3]):([0-5]\d)\s", lambda m: f"{int(m[1]):02}:{m[2]}", "time"))
     t["priority"] = take(r"\sp([1-4])\s", lambda m: int(m[1])) or 4  # kind p1..p4, for its color
     t["project"] = take(r"\s#([\w-]+)\s", lambda m: m[1].lower(), "project") or project
+    t["labels"] = []
+    while name := take(r"\s@([\w-]+)\s", lambda m: m[1].lower(), "label"):  # any number of @labels
+        t["labels"] += [name] if name not in t["labels"] else []
+    if label and label not in t["labels"]:
+        t["labels"].append(label)
     t["title"] = " ".join(s.split())
     t["tokens"] = sorted(tokens)
     if t["repeat"] and not t["due"]:
@@ -328,8 +394,10 @@ def from_form(f: dict, today: dt.date) -> dict | None:
         return None
     due = iso_date(f.get("due", ""))
     repeat = f.get("repeat", "") if RULE_RE.fullmatch(f.get("repeat", "")) else None
+    labels = [project_name(x) for x in f.get("labels", "").split(",")]
     return {
         "title": title, "project": project_name(f.get("project", "")),
+        "labels": list(dict.fromkeys(name for name in labels if name)),  # "@errand, phone" -> errand, phone
         "priority": int(f["priority"]) if f.get("priority") in ("1", "2", "3", "4") else 4,
         "due": due or (first_due(repeat, today) if repeat else None),
         "due_time": f.get("due_time") if TIME_RE.fullmatch(f.get("due_time", "")) else None,
@@ -373,9 +441,10 @@ def week_view(today: dt.date, start: dt.date | None = None) -> dict:
             "prev": start - dt.timedelta(days=7) if start > this else None, "next": start + dt.timedelta(days=7)}
 
 
-def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None,
+def groups(ts: list[dict], today: dt.date, page: str, name: str | None = None,
            first: dt.date | None = None) -> list[dict]:
-    """Groups for one page: "today", "upcoming", "inbox" or "project". Empty groups are hidden unless keep.
+    """Groups for one page: "today", "upcoming", "inbox", "project" or "label" (`name` says which one).
+    Empty groups are hidden unless keep.
     Upcoming is a board: an overdue column, then one column per day for the 7 days from `first` (default today)."""
     open_ = sorted(filter(is_open, ts), key=_sort_key)
     done = [t for t in ts if t["done_on"] == today]
@@ -391,20 +460,24 @@ def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None
         return ([_group("Overdue", overdue, cls="warn", board=True)] if first == today else []) + [
             _group(f"{d:%b} {d.day}", [t for t in open_ if t["due"] == d], "time", keep=True,
                    note=notes.get(d, f"{d:%A}"), day=d, board=True) for d in days]
-    member = (lambda t: t["project"] == project) if page == "project" else (lambda t: not t["project"])
+    member = {"project": lambda t: t["project"] == name,
+              "label": lambda t: name in [n for n, _ in t["labels"]]}.get(page, lambda t: not t["project"])
     return [_group("overdue", [t for t in overdue if member(t)], cls="warn"),
             _group("scheduled", [t for t in open_ if t["due"] and t["due"] >= today and member(t)]),
             _group("no date", [t for t in open_ if not t["due"] and member(t)]),
             _group("done", [t for t in done if member(t)], done=True)]
 
 
-def counts(ts: list[dict], today: dt.date, names: list[str]) -> dict:
-    """Nav numbers: open tasks in the inbox, due today or earlier, and per project (every project, even empty)."""
+def counts(ts: list[dict], today: dt.date, names: list[str], labels: dict[str, str]) -> dict:
+    """Nav numbers: open tasks in the inbox, due today or earlier, per project and per label
+    (every project and label, even empty; labels as (name, count, color))."""
     open_ = [t for t in ts if is_open(t)]
     per = Counter(t["project"] for t in open_ if t["project"])
+    per_label = Counter(n for t in open_ for n, _ in t["labels"])
     return {"inbox": sum(not t["project"] for t in open_),
             "today": sum(bool(t["due"]) and t["due"] <= today for t in open_),
-            "projects": [(name, per[name]) for name in sorted(set(names) | set(per))]}
+            "projects": [(name, per[name]) for name in sorted(set(names) | set(per))],
+            "labels": [(name, per_label[name], color) for name, color in sorted(labels.items())]}
 
 
 def day_label(d: dt.date, today: dt.date, long: bool = False) -> str:
@@ -451,4 +524,6 @@ def meta(t: dict, group: dict, today: dt.date, show_project: bool) -> list[tuple
         parts.append(("#" + t["project"], "", "/todo/project/" + quote(t["project"], safe="")))
     elif show_project and group.get("board"):
         parts.append(("inbox", "", "/todo/inbox"))
+    for name, color in t.get("labels") or ():
+        parts.append(("@" + name, f"lab lc-{color}", "/todo/label/" + quote(name, safe="")))
     return parts

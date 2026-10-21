@@ -175,29 +175,35 @@ def presets_view(request: Request):
 # with JS on, todo.html sends them with fetch and swaps in the changed parts of that page.
 
 def todo_render(request: Request, page: str, project: str | None = None, edit: int | None = None,
-                added: int | None = None, done: int | None = None, week: dt.date | None = None):
+                added: int | None = None, done: int | None = None, week: dt.date | None = None,
+                label: str | None = None):
     today = data.logical_today(CFG)
     ts = todo.tasks(TODO_DB, today)
     week_view = todo.week_view(today, week) if page == "upcoming" else None
-    groups = todo.groups(ts, today, page, project, week_view and week_view["first"])
+    groups = todo.groups(ts, today, page, project or label, week_view and week_view["first"])
     ticked = todo.get(TODO_DB, done) if done else None
     if ticked and any(ticked["id"] == t["id"] for g in groups if g["done"] for t in g["rows"]):
         ticked = None  # still on the page, struck through in the done group
     return render(
         request, "todo.html", "todo", page=page, project=project, groups=groups,
-        counts=todo.counts(ts, today, todo.projects(TODO_DB)),
-        here="/todo/project/" + quote(project, safe="") if project else f"/todo/upcoming/{week_view['start']}"
-        if week else {"today": "/todo"}.get(page, "/todo/" + page), week=week_view,
+        counts=todo.counts(ts, today, todo.projects(TODO_DB), todo.label_colors(TODO_DB)), label=label,
+        here="/todo/project/" + quote(project, safe="") if project else "/todo/label/" + quote(label, safe="")
+        if label else f"/todo/upcoming/{week_view['start']}" if week else {"today": "/todo"}.get(page, "/todo/" + page),
+        week=week_view, palette=todo.PALETTE,
         edit=edit, added=todo.get(TODO_DB, added) if added else None, ticked=ticked, rules=todo.RULES,
         date_options=todo.date_options(today),
     )
 
 
 @app.get("/todo/parse")
-def todo_parse(request: Request, q: str = "", page: str = "", project: str = "", due: str = ""):
+def todo_parse(request: Request, q: str = "", page: str = "", project: str = "", due: str = "", label: str = ""):
     """The quick-add preview line, as an HTML fragment that also carries the token spans to highlight."""
     today = data.logical_today(CFG)
-    p = todo.parse(q, today, todo.iso_date(due) or (today if page == "today" else None), project or None)
+    p = todo.parse(q, today, todo.iso_date(due) or (today if page == "today" else None), project or None, label or None)
+    colors = todo.label_colors(TODO_DB)
+    color = lambda name: colors.get(name) or todo.default_color(name)  # noqa: E731  a new label's coming color
+    p["labels"] = [(name, color(name)) for name in p["labels"]]
+    p["tokens"] = [(a, b, f"label lc-{color(q[a + 1:b].lower())}" if kind == "label" else kind) for a, b, kind in p["tokens"]]
     return templates.TemplateResponse(request, "_todo_preview.html", {"p": p, "today": today})
 
 
@@ -240,7 +246,7 @@ async def todo_add(request: Request):
     f = await form(request)
     today = data.logical_today(CFG)
     due = todo.iso_date(f.get("due", "")) or (today if f.get("page") == "today" else None)  # the page's default
-    t = todo.parse(f.get("q", ""), today, due, f.get("project") or None)
+    t = todo.parse(f.get("q", ""), today, due, f.get("project") or None, f.get("label") or None)
     if not t["title"]:
         return back(f)
     task_id = todo.add(TODO_DB, t, dt.datetime.now())
@@ -279,6 +285,39 @@ async def todo_due(request: Request, task_id: int):
     elif due:
         todo.move(TODO_DB, task_id, due)
     return back(f, task_id=task_id)
+
+
+@app.get("/todo/label/{name}")
+def todo_label(request: Request, name: str, edit: int | None = None,
+               added: int | None = None, done: int | None = None):
+    return todo_render(request, "label", edit=edit, added=added, done=done, label=name)
+
+
+@app.post("/todo/label/{name}/rename")
+async def todo_label_rename(request: Request, name: str):
+    f = await form(request)
+    if (new := todo.project_name(f.get("name", ""))) and new != name:
+        todo.rename_label(TODO_DB, name, new)
+        if f.get("next") == "/todo/label/" + quote(name, safe=""):  # was on its page: follow the new name
+            f["next"] = "/todo/label/" + quote(new, safe="")
+    return back(f)
+
+
+@app.post("/todo/label/{name}/color")
+async def todo_label_color(request: Request, name: str):
+    f = await form(request)
+    todo.color_label(TODO_DB, name, f.get("color", ""))
+    return back(f)
+
+
+@app.post("/todo/label/{name}/delete")
+async def todo_label_delete(request: Request, name: str):
+    """It comes off its tasks; the tasks stay."""
+    f = await form(request)
+    todo.delete_label(TODO_DB, name)
+    if f.get("next") == "/todo/label/" + quote(name, safe=""):
+        f["next"] = "/todo"
+    return back(f)
 
 
 @app.post("/todo/project/{name}/rename")

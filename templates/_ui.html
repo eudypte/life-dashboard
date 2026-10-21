@@ -33,11 +33,13 @@
     {#- #}{% if p.repeat %}<span class="chip">↻ {{ p.repeat }}</span>{% endif %}
     {#- #}{% if p.priority < 4 %}<span class="chip p{{ p.priority }}">p{{ p.priority }}</span>{% endif %}
     {#- #}<span class="chip acc">{{ "#" ~ p.project if p.project else "inbox" }}</span>
-  {%- elif p and not title and (p.due or p.repeat or p.priority < 4 or p.project) -%}
+    {#- #}{% for name, color in p.labels %}<span class="chip lab lc-{{ color }}">@{{ name }}</span>{% endfor %}
+  {%- elif p and not title and (p.due or p.repeat or p.priority < 4 or p.project or p.labels) -%}
     {%- if p.due %}<span class="chip mc">{{ p.due | day_label(today, true) }}{{ " " ~ p.due_time if p.due_time }}</span>{% endif %}
     {#- #}{% if p.repeat %}<span class="chip">↻ {{ p.repeat }}</span>{% endif %}
     {#- #}{% if p.priority < 4 %}<span class="chip p{{ p.priority }}">p{{ p.priority }}</span>{% endif %}
     {#- #}{% if p.project %}<span class="chip acc">#{{ p.project }}</span>{% endif %}
+    {#- #}{% for name, color in p.labels %}<span class="chip lab lc-{{ color }}">@{{ name }}</span>{% endfor %}
   {%- else -%}
     <span class="hint">fri 5pm · p1 · #project · every week</span>
   {%- endif -%}
@@ -69,6 +71,8 @@
       <label>priority <select name="priority">{% for p in range(1, 5) %}<option value="{{ p }}"{% if p == t.priority %} selected{% endif %}>p{{ p }}{{ " (none)" if p == 4 }}</option>{% endfor %}</select></label>
       <span>project <span class="combo"><input class="proj" name="project" list="projects" value="{{ t.project or '' }}" placeholder="inbox" autocomplete="off" spellcheck="false" aria-label="project" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sug{{ t.id }}">
         {#- #}<ul class="suggest" id="sug{{ t.id }}" role="listbox" hidden></ul></span></span>
+      <span>labels <span class="combo multi"><input class="labs" name="labels" list="labels" value="{{ t.labels | map('first') | join(', ') }}" placeholder="none" autocomplete="off" spellcheck="false" aria-label="labels, comma separated" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lsug{{ t.id }}">
+        {#- #}<ul class="suggest" id="lsug{{ t.id }}" role="listbox" hidden></ul></span></span>
       <label>repeat <select name="repeat"><option value="">never</option>
         {%- for r in (rules | list) + ([t.repeat] if t.repeat and t.repeat not in rules else []) %}<option{% if r == t.repeat %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
     </div>
@@ -96,7 +100,8 @@
         <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">{{ datefield("due", t.due, true) }}<button class="btn">set</button></form>
       </div></details>{% endif %}
     {%- for text, cls, href in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}
-      {%- if href %}<a class="go" href="{{ href }}"{% if g.board %} draggable="false"{% endif %}{% if t.project and text == "#" ~ t.project %} data-project="{{ t.project }}"{% endif %}>{{ text }}</a>{% else %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endif %}
+      {%- if href %}<a class="go{{ ' ' ~ cls if cls }}" href="{{ href }}"{% if g.board %} draggable="false"{% endif %}
+        {%- if t.project and text == "#" ~ t.project %} data-project="{{ t.project }}"{% elif text[0] == "@" %} data-label="{{ text[1:] }}"{% endif %}>{{ text }}</a>{% else %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endif %}
     {%- endfor -%}
   </span>
 </div>

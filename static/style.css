@@ -146,6 +146,11 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
 .js .hl > input { color: transparent; caret-color: var(--hi); }
 .tok.date, .tok.time { color: var(--c); } .tok.project { color: var(--accent); } .tok.repeat { color: var(--kcal); }
 .tok.p1 { color: var(--warn); } .tok.p2 { color: var(--f); } .tok.p3 { color: var(--p); } .tok.p4 { color: var(--dim); }
+/* label colors: todo.PALETTE, drawn from the theme so every theme has its own six */
+.lc-p { --lc: var(--p); } .lc-c { --lc: var(--c); } .lc-f { --lc: var(--f); }
+.lc-kcal { --lc: var(--kcal); } .lc-accent { --lc: var(--accent); } .lc-warn { --lc: var(--warn); }
+.tok.label, .chip.lab, .nav a[data-label] { color: var(--lc); }
+a.lab { color: var(--lc); background: color-mix(in srgb, var(--lc) 14%, transparent); padding: 0 3px; white-space: nowrap; }
 .btn { font: inherit; font-size: 12px; color: var(--bg); background: var(--accent); border: 0; padding: 1px 8px; cursor: pointer; white-space: nowrap; }
 .link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 form.inline { display: inline; }
@@ -203,6 +208,7 @@ html:not(.js) .dayadd .close { display: none; }
 .suggest { position: absolute; z-index: 3; top: calc(100% + 2px); left: 0; min-width: 100%; max-height: 12em; overflow-y: auto; margin: 0; padding: 2px 0; list-style: none; background: var(--bg); border: 1px solid var(--accent); font-size: 12.5px; }
 .suggest li { padding: 1px 8px; color: var(--hi); white-space: nowrap; cursor: pointer; }
 .suggest li::before { content: "# "; color: var(--dim); }
+.multi .suggest li::before { content: "@ "; }
 .suggest li:hover, .suggest li.on { background: var(--bg2); color: var(--accent); }
 details.when { display: inline-block; position: relative; }
 details.when summary { display: inline; cursor: pointer; list-style: none; }
@@ -233,6 +239,7 @@ html:not(.js) .datefield .shown { display: none; }
 .edit .fields > * { display: flex; gap: 1ch; align-items: baseline; color: var(--dim); font-size: 12px; }
 .js .edit .datefield { padding: 1px 6px; font-size: 12.5px; background: var(--bg); }
 .edit .fields .proj { width: 12ch; }
+.edit .fields .labs { width: 20ch; }
 .edit .actions { display: flex; flex-wrap: wrap; gap: 4px 2ch; align-items: baseline; font-size: 12px; }
 details.del { margin-left: auto; position: relative; }
 details.del summary { display: inline; cursor: pointer; color: var(--warn); list-style: none; }
@@ -242,14 +249,19 @@ details.del[open] summary { color: var(--dim); }
 details.del .btn { position: absolute; z-index: 2; top: calc(100% + 4px); right: 0; background: var(--warn); }
 
 /* project menu: right-click (long-press on touch) a project for rename and delete */
-a[data-project] { -webkit-touch-callout: none; }
+a[data-project], a[data-label] { -webkit-touch-callout: none; }
 .ctx { position: fixed; z-index: 5; min-width: 22ch; max-width: min(40ch, calc(100vw - 16px)); padding: 6px 8px; background: var(--bg);
   border: 1px solid var(--accent); font-size: 12.5px; }
 .ctx-head { color: var(--dim); margin-bottom: 4px; }
 .ctx .item { display: block; font: inherit; color: var(--hi); background: none; border: 0; padding: 1px 0; cursor: pointer; }
 .ctx .item.warn { color: var(--warn); }
 .ctx .item:hover { text-decoration: underline; text-underline-offset: 3px; }
-.ctx form, .ctx[data-mode="rename"] .ctx-main, .ctx[data-mode="delete"] .ctx-main { display: none; }
+.ctx form { display: none; }
+.ctx[data-mode="rename"] .ctx-main, .ctx[data-mode="color"] .ctx-main, .ctx[data-mode="delete"] .ctx-main { display: none; }
+.ctx:not([data-kind="label"]) .for-label { display: none; }
+.ctx[data-mode="color"] .ctx-color { display: flex; gap: 6px; padding: 2px 0; }
+.swatch { width: 18px; height: 18px; padding: 0; border: 0; background: var(--lc); cursor: pointer; }
+.swatch[aria-current] { outline: 2px solid var(--hi); outline-offset: 2px; }
 .ctx[data-mode="rename"] .ctx-rename { display: flex; gap: 1ch; }
 .ctx[data-mode="delete"] .ctx-delete { display: block; }
 .ctx-rename input { flex: 1; min-width: 0; font: inherit; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); padding: 1px 6px; }
