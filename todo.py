@@ -282,11 +282,11 @@ def _sort_key(t: dict):
     return t["due"] or dt.date.max, t["due_time"] or "99", t["priority"], t["id"]
 
 
-def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None):
+def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None, inbox=False):
     """mode: what the meta column shows for the due date ("time" when the group already is that day).
-    day: the date of an Upcoming day section."""
+    day: the date of an Upcoming column. inbox: say "inbox" for tasks with no project, as board cards do."""
     return {"label": label, "rows": rows, "mode": mode, "cls": cls, "done": done, "keep": keep, "note": note,
-            "day": day}
+            "day": day, "inbox": inbox}
 
 
 def week_view(today: dt.date, start: dt.date | None = None) -> dict:
@@ -300,15 +300,14 @@ def week_view(today: dt.date, start: dt.date | None = None) -> dict:
         title = f"{start:%b} - {end:%b %Y}"
     else:
         title = f"{start:%B %Y}"
-    return {"start": start, "days": [start + dt.timedelta(days=i) for i in range(7)], "first": max(start, today),
-            "title": title, "prev": start - dt.timedelta(days=7) if start > this else None,
-            "next": start + dt.timedelta(days=7)}
+    return {"start": start, "first": max(start, today), "title": title,
+            "prev": start - dt.timedelta(days=7) if start > this else None, "next": start + dt.timedelta(days=7)}
 
 
 def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None,
            first: dt.date | None = None) -> list[dict]:
     """Groups for one page: "today", "upcoming", "inbox" or "project". Empty groups are hidden unless keep.
-    Upcoming lists the 7 days from `first` (default today), one section per day."""
+    Upcoming is a board: an overdue column, then one column per day for the 7 days from `first` (default today)."""
     open_ = sorted(filter(is_open, ts), key=_sort_key)
     done = [t for t in ts if t["done_on"] == today]
     overdue = [t for t in open_ if t["due"] and t["due"] < today]
@@ -320,9 +319,9 @@ def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None
         first = first or today
         notes = {today: "Today", today + dt.timedelta(days=1): "Tomorrow"}
         days = [first + dt.timedelta(days=i) for i in range(7)]
-        return ([_group("overdue", overdue, cls="warn")] if first == today else []) + [
-            _group(f"{d:%b} {d.day}", [t for t in open_ if t["due"] == d], "time", cls="day", keep=True,
-                   note=notes.get(d, ""), day=d) for d in days]
+        return ([_group("Overdue", overdue, cls="warn", inbox=True)] if first == today else []) + [
+            _group(f"{d:%b} {d.day}", [t for t in open_ if t["due"] == d], "time", keep=True,
+                   note=notes.get(d, f"{d:%A}"), day=d, inbox=True) for d in days]
     member = (lambda t: t["project"] == project) if page == "project" else (lambda t: not t["project"])
     return [_group("overdue", [t for t in overdue if member(t)], cls="warn"),
             _group("scheduled", [t for t in open_ if t["due"] and t["due"] >= today and member(t)]),
@@ -378,6 +377,6 @@ def meta(t: dict, group: dict, today: dt.date, show_project: bool) -> list[tuple
         parts.append((f"↻ next {day_label(t['due'], today)}", ""))
     elif t["repeat"]:
         parts.append(("↻ " + repeat_label(t["repeat"]), ""))
-    if t["project"] and show_project:
-        parts.append(("#" + t["project"], ""))
+    if show_project and (t["project"] or group.get("inbox")):
+        parts.append(("#" + t["project"] if t["project"] else "inbox", ""))
     return parts

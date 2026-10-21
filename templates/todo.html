@@ -34,41 +34,38 @@
   {% endif %}
   </div>
   {% if week %}
-  <div class="week">
-    <div class="week-head"><span class="hi">{{ week.title }}</span>
-      <span class="week-nav">
-        {%- if week.prev %}<a href="/todo/upcoming/{{ week.prev }}" aria-label="previous week">&lt;</a>{% else %}<span class="dim">&lt;</span>{% endif %}
-        <a href="/todo/upcoming">today</a>
-        <a href="/todo/upcoming/{{ week.next }}" aria-label="next week">&gt;</a></span></div>
-    <div class="strip">
-    {%- for d in week.days %}
-      {%- if d >= week.first %}<a href="#d{{ d }}"{% if d == today %} class="cur" aria-current="date"{% endif %}>{% else %}<span class="past">{% endif -%}
-      <span class="wd">{{ d.strftime("%a") }}</span><span>{{ d.day }}</span>
-      {%- if d >= week.first %}</a>{% else %}</span>{% endif %}
-    {%- endfor %}</div>
+  <div class="week-head"><span class="hi">{{ week.title }}</span>
+    <span class="week-nav">
+      {%- if week.prev %}<a href="/todo/upcoming/{{ week.prev }}" aria-label="previous week">&lt;</a>{% else %}<span class="dim">&lt;</span>{% endif %}
+      <a href="/todo/upcoming">today</a>
+      <a href="/todo/upcoming/{{ week.next }}" aria-label="next week">&gt;</a></span></div>
+  <div class="tasks board">
+  {% for g in groups if g.rows or g.keep %}
+    <section class="col"{% if g.day %} id="d{{ g.day }}"{% endif %}>
+      <div class="col-head">{% if g.day %}<span class="hi">{{ g.label }}</span> · {{ g.note }}{% else %}<span class="{{ g.cls }}">{{ g.label }}</span>{% endif %} <span class="dim">{{ g.rows | length or "" }}</span></div>
+      {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, true, date_options) }}{% endfor %}</div>{% endif %}
+      {% if g.day %}
+      <details class="dayadd" id="add-{{ g.day }}"><summary>+ add task</summary>
+        <form class="add" method="post" action="/todo/add">
+          <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="due" value="{{ g.day }}">
+          <input name="q" placeholder="add to {{ g.label }}…" autocomplete="off" spellcheck="false" aria-label="add a task on {{ g.label }}" required>
+          <button class="btn">add</button>
+        </form>
+      </details>
+      {% endif %}
+    </section>
+  {% endfor %}
   </div>
-  {% endif %}
+  {% else %}
   <div class="tasks">
   {% for g in groups if g.rows or g.keep %}
-    {% if g.day %}
-    <div class="grp day" id="d{{ g.day }}"><span class="hi">{{ g.label }}</span>{% if g.note %} · {{ g.note }}{% endif %} · <span class="dim">{{ g.day.strftime("%A") }}</span></div>
-    {% else %}
     <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">· {{ g.note }}</span>{% endif %} <span class="dim">· {{ g.rows | length or "nothing" }}</span></div>
-    {% endif %}
     {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project", date_options) }}{% endfor %}</div>{% endif %}
-    {% if g.day %}
-    <details class="dayadd" id="add-{{ g.day }}"><summary>+ add task</summary>
-      <form class="add" method="post" action="/todo/add">
-        <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="due" value="{{ g.day }}">
-        <span class="plus">+</span><input name="q" placeholder="add to {{ g.label }}…" autocomplete="off" spellcheck="false" aria-label="add a task on {{ g.label }}" required>
-        <button class="btn">add ⏎</button>
-      </form>
-    </details>
-    {% endif %}
   {% else %}
     <p class="empty">nothing here</p>
   {% endfor %}
   </div>
+  {% endif %}
 </fieldset>
 <datalist id="projects">{% for name, n in counts.projects %}<option value="{{ name }}">{% endfor %}</datalist>
 <script>
@@ -90,8 +87,9 @@
     const r = await fetch(url, init);
     if (!r.ok) throw new Error(r.status);
     const page = new DOMParser().parseFromString(await r.text(), "text/html");
-    const row = document.activeElement?.closest(".t")?.id;
+    const row = document.activeElement?.closest(".t")?.id, x = document.querySelector(".tasks").scrollLeft;
     for (const sel of [".flashes", ".tasks", ".nav .sub", "#projects"]) document.querySelector(sel).replaceWith(page.querySelector(sel));
+    document.querySelector(".tasks").scrollLeft = x;  // the Upcoming board scrolls sideways
     if (row) document.querySelector(`#${row} .box`)?.focus();
   }
   document.addEventListener("submit", e => {
@@ -122,7 +120,7 @@
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") for (const d of document.querySelectorAll("details.when[open]")) d.open = false;
   });
-  // "+ add task" under an Upcoming day: type straight away.
+  // "+ add task" at the foot of an Upcoming day: type straight away.
   document.addEventListener("toggle", e => {
     if (e.target.matches(".dayadd") && e.target.open) e.target.querySelector("[name=q]").focus();
   }, true);

@@ -150,20 +150,20 @@ form.inline { display: inline; }
 .tasks { margin-top: 10px; }
 .grp { color: var(--dim); margin: 10px 0 2px; padding: 0 6px; }
 .grp:first-child { margin-top: 0; }
-.grp.day { color: var(--fg); margin-top: 14px; padding-bottom: 2px; border-bottom: 1px solid var(--bg2); }
-/* Upcoming: month header, week strip, a "+ add task" line under each day */
-.week { margin-top: 10px; }
-.week-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 6px; }
+/* Upcoming: month header, then a board of day columns that scrolls sideways; tasks are cards */
+.week-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding: 0 2px; }
 .week-nav { display: flex; gap: 1.5ch; }
-.strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 6px; border: 1px solid var(--bg2); }
-.strip > * { display: flex; flex-direction: column; align-items: center; padding: 3px 0; color: var(--hi); }
-.strip .wd { font-size: 12px; color: var(--dim); }
-.strip .past { opacity: .4; }
-.strip a:hover { background: var(--bg2); text-decoration: none; }
-.strip a.cur, .strip a.cur .wd { color: var(--accent); }
-.strip a.cur { box-shadow: inset 0 -2px 0 var(--accent); }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(30ch, 1fr); gap: 14px; align-items: start;
+  margin-top: 10px; padding-bottom: 8px; overflow-x: auto; scroll-snap-type: x proximity; }
+.board:has(details.when[open], .suggest:not([hidden])) { padding-bottom: 14em; }  /* room for an open menu: the scroller clips */
+.col { min-width: 0; scroll-snap-align: start; }
+.col-head { padding: 0 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board .rows { display: grid; gap: 8px; }
+.board .rows > .t:nth-child(n), .board .rows > .t + .t { grid-template-columns: 3ch minmax(0, 1fr); padding: 6px 8px; background: none; border: 1px solid var(--dim); }
+.board .rows > .t.editing { border-color: var(--accent); outline: 0; }
+.board .t .meta { grid-column: 2; white-space: normal; }
 .dayadd { margin: 2px 0 0; }
-.dayadd summary { display: inline-block; padding: 0 6px; font-size: 12px; color: var(--dim); opacity: .75; cursor: pointer; list-style: none; }
+.dayadd summary { display: inline-block; padding: 2px; font-size: 12px; color: var(--dim); opacity: .75; cursor: pointer; list-style: none; }
 .dayadd summary::-webkit-details-marker { display: none; }
 .dayadd summary:hover { opacity: 1; color: var(--accent); }
 .dayadd[open] summary { display: none; }
@@ -219,6 +219,11 @@ details.del summary::-webkit-details-marker { display: none; }
 details.del[open] summary { color: var(--dim); }
 details.del .btn { background: var(--warn); margin-left: 1ch; }
 
+/* the edit form in a board card is narrow: one field per line, as on phones */
+.board .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }
+.board .edit .fields > * { display: contents; }
+.board .edit .fields :is(input, select, .datefield, .combo) { justify-self: start; max-width: 100%; }
+
 /* ---------- narrow screens ---------- */
 @media (max-width: 1000px) {
   .main { grid-template-columns: minmax(0, 1fr); }
@@ -261,7 +266,8 @@ details.del .btn { background: var(--warn); margin-left: 1ch; }
   .grp, .flash { padding: 0 2px; }
   .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }
   .edit .fields > * { display: contents; }
-  .edit .fields input, .edit .fields select, .edit .fields .datefield, .edit .fields .combo { justify-self: start; }
+  .edit .fields :is(input, select, .datefield, .combo) { justify-self: start; }
+  .board { grid-auto-columns: calc(100% - 4ch); gap: 10px; scroll-snap-type: x mandatory; }  /* a day at a time; the next peeks in */
   svg.chart text { font-size: 20px; }  /* 600-unit-wide charts render at ~0.55x here */
   svg.chart.only-wide { display: none; }
   svg.chart.only-narrow { display: block; }

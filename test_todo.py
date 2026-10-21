@@ -166,8 +166,8 @@ class ViewTest(unittest.TestCase):
         ts = [self.task(1, d(10, 18)), self.task(2, d(10, 22)), self.task(3, d(11, 2)), self.task(4)]
         g = todo.groups(ts, T, "upcoming")
         self.assertEqual([(x["label"], x["note"]) for x in g],
-                         [("overdue", ""), ("Oct 20", "Today"), ("Oct 21", "Tomorrow"), ("Oct 22", ""), ("Oct 23", ""),
-                          ("Oct 24", ""), ("Oct 25", ""), ("Oct 26", "")])
+                         [("Overdue", ""), ("Oct 20", "Today"), ("Oct 21", "Tomorrow"), ("Oct 22", "Thursday"),
+                          ("Oct 23", "Friday"), ("Oct 24", "Saturday"), ("Oct 25", "Sunday"), ("Oct 26", "Monday")])
         self.assertEqual([[t["id"] for t in x["rows"]] for x in g], [[1], [], [], [2], [], [], [], []])
         later = todo.groups(ts, T, "upcoming", first=d(11, 2))  # a later week: no overdue group
         self.assertEqual([x["day"] for x in later][:2], [d(11, 2), d(11, 3)])
@@ -194,6 +194,9 @@ class ViewTest(unittest.TestCase):
         self.assertIsNone(todo.when(t, done_group, T))
         self.assertEqual(todo.meta(t, date_group, T, True), [("↻ weekly", ""), ("#home", "")])
         self.assertEqual(todo.meta(t, done_group, T, False), [("↻ next Oct 18", "")])
+        card = {"done": False, "mode": "time", "inbox": True}  # Upcoming board cards name the inbox too
+        self.assertEqual(todo.meta(self.task(5, T), card, T, True), [("inbox", "")])
+        self.assertEqual(todo.meta(self.task(6, T), date_group, T, True), [])
         self.assertEqual(todo.day_label(d(1, 5, 2027), T, long=True), "Tue Jan 5 2027")
 
 
