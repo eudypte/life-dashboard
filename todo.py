@@ -24,9 +24,11 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS task (
   done_on    TEXT,                       -- ISO date of the last tick
   prev_due   TEXT,                       -- due before the last tick of a repeat, for undo
   created_at TEXT NOT NULL,
-  pos        INTEGER                     -- order within a day: the last task added or moved there comes last
+  pos        INTEGER,                    -- order within a day: the last task added or moved there comes last
+  dropped    INTEGER                     -- dragged onto its day: below the rest of that day, in drop order
 )"""
 NEXT_POS = "(SELECT COALESCE(MAX(COALESCE(pos, id)), 0) + 1 FROM task)"
+NEXT_DROP = "(SELECT COALESCE(MAX(dropped), 0) + 1 FROM task)"
 # The edit form's choices; quick add can also make "every 3 days" and the like.
 RULES = ("every day", "every weekday", "every week", "every 2 weeks", "every month", "every year")
 RULE_RE = re.compile(r"every (day|weekday|week|month|year)|every [1-9]\d? (days|weeks|months)")
@@ -63,8 +65,10 @@ def init(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _db(path) as con:
         con.execute(SCHEMA)
-        if "pos" not in {row["name"] for row in con.execute("PRAGMA table_info(task)")}:  # older files
-            con.execute("ALTER TABLE task ADD COLUMN pos INTEGER")
+        have = {row["name"] for row in con.execute("PRAGMA table_info(task)")}
+        for column in ("pos", "dropped"):  # files made before these columns
+            if column not in have:
+                con.execute(f"ALTER TABLE task ADD COLUMN {column} INTEGER")
 
 
 def _task(row) -> dict:
@@ -102,8 +106,10 @@ def add(path: Path, t: dict, now: dt.datetime) -> int:
 
 def update(path: Path, task_id: int, t: dict) -> None:
     with _db(path) as con:
+        # a new date undoes a drop's place at the bottom of the old day
         con.execute("UPDATE task SET title = :title, project = :project, priority = :priority, due = :due,"
-                    " due_time = :due_time, repeat = :repeat, prev_due = NULL WHERE id = :id",
+                    " due_time = :due_time, repeat = :repeat, prev_due = NULL,"
+                    " dropped = CASE WHEN due IS :due THEN dropped END WHERE id = :id",
                     {**_params(t), "id": task_id})
 
 
@@ -118,22 +124,29 @@ def tick(path: Path, task_id: int, today: dt.date) -> None:
         row = con.execute("SELECT repeat, due FROM task WHERE id = ?", (task_id,)).fetchone()
         if row and row["repeat"]:
             due = dt.date.fromisoformat(row["due"]) if row["due"] else None
-            con.execute("UPDATE task SET prev_due = due, due = ?, done_on = ? WHERE id = ?",
+            con.execute("UPDATE task SET prev_due = due, due = ?, done_on = ?, dropped = NULL WHERE id = ?",
                         (next_due(row["repeat"], due, today).isoformat(), today.isoformat(), task_id))
         elif row:
             con.execute("UPDATE task SET done_on = ? WHERE id = ?", (today.isoformat(), task_id))
 
 
 def move(path: Path, task_id: int, due: dt.date | None) -> None:
-    """New due date, keeping time and repeat; no date also drops the time. The task goes last in its new day.
-    A moved task can no longer undo its last tick."""
+    """New due date (the date menu), keeping time and repeat; no date also drops the time. In its new day the task
+    goes after the others of the same time and priority. A moved task can no longer undo its last tick."""
     with _db(path) as con:
         if due:
-            con.execute(f"UPDATE task SET due = ?, prev_due = NULL, pos = {NEXT_POS} WHERE id = ?",
+            con.execute(f"UPDATE task SET due = ?, prev_due = NULL, pos = {NEXT_POS}, dropped = NULL WHERE id = ?",
                         (due.isoformat(), task_id))
         else:
-            con.execute(f"UPDATE task SET due = NULL, due_time = NULL, prev_due = NULL, pos = {NEXT_POS} WHERE id = ?",
-                        (task_id,))
+            con.execute(f"UPDATE task SET due = NULL, due_time = NULL, prev_due = NULL, pos = {NEXT_POS},"
+                        " dropped = NULL WHERE id = ?", (task_id,))
+
+
+def drop(path: Path, task_id: int, due: dt.date) -> None:
+    """Dragged onto a day of the Upcoming board: the task goes below every other task of that day."""
+    with _db(path) as con:
+        con.execute(f"UPDATE task SET due = ?, prev_due = NULL, dropped = {NEXT_DROP} WHERE id = ?",
+                    (due.isoformat(), task_id))
 
 
 def untick(path: Path, task_id: int) -> None:
@@ -286,9 +299,10 @@ def is_open(t: dict) -> bool:
 
 
 def _sort_key(t: dict):
-    """Within a day: timed tasks by time, then by priority, then in the order they were added or moved there.
-    The Upcoming board's drop placeholder uses the same rule (todo.html)."""
-    return t["due"] or dt.date.max, t["due_time"] or "99", t["priority"], t.get("pos") or t["id"]
+    """Within a day: timed tasks by time, then by priority, then in the order they were added or moved there;
+    tasks dragged onto the day come after all of those, in the order they were dropped."""
+    return (t["due"] or dt.date.max, t.get("dropped") or 0, t["due_time"] or "99", t["priority"],
+            t.get("pos") or t["id"])
 
 
 def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None, board=False):

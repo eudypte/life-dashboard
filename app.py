@@ -267,13 +267,14 @@ async def todo_edit(request: Request, task_id: int):
 
 @app.post("/todo/{task_id}/due")
 async def todo_due(request: Request, task_id: int):
-    """The date menu: one of its options ("none" clears the date) or a picked ISO date."""
+    """The date menu: one of its options ("none" clears the date) or a picked ISO date.
+    drop=1: dragged onto a day of the Upcoming board."""
     f = await form(request)
     options = {value: d for value, _, d in todo.date_options(data.logical_today(CFG))}
     if f.get("due") in options:
         todo.move(TODO_DB, task_id, options[f["due"]])
     elif due := todo.iso_date(f.get("due", "")):
-        todo.move(TODO_DB, task_id, due)
+        (todo.drop if f.get("drop") else todo.move)(TODO_DB, task_id, due)
     return back(f, task_id=task_id)
 
 

@@ -153,8 +153,8 @@ form.inline { display: inline; }
 /* Upcoming: month header, then a board of day columns that scrolls sideways; tasks are cards */
 .week-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding: 0 2px; }
 .week-nav { display: flex; gap: 1.5ch; }
-.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(30ch, 1fr); gap: 14px; align-items: start;
-  margin-top: 10px; padding-bottom: 28px; overflow-x: auto; scroll-snap-type: x proximity;
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(30ch, 1fr); gap: 14px;
+  margin-top: 10px; overflow-x: auto; scroll-snap-type: x proximity;
   scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--dim) 45%, transparent) transparent; }
 /* Safari ignores scrollbar-color; same thin, dim scrollbar there */
 .board::-webkit-scrollbar { height: 6px; }
@@ -163,7 +163,8 @@ form.inline { display: inline; }
 .board .t[draggable=true] { cursor: grab; }
 .board .t.dragging { opacity: .4; }
 .board .placeholder { border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
-.col { min-width: 0; scroll-snap-align: start; }
+/* columns run the board's full height, bottom space included, so a drop anywhere in the strip lands */
+.col { min-width: 0; padding-bottom: 28px; scroll-snap-align: start; }
 .col-head { padding: 0 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .board .rows { display: grid; gap: 8px; }
 .board .rows > .t:nth-child(n), .board .rows > .t + .t { grid-template-columns: 3ch minmax(0, 1fr); padding: 6px 8px; background: none; border: 1px solid var(--dim); }
@@ -275,7 +276,8 @@ details.del .btn { position: absolute; z-index: 2; top: calc(100% + 4px); right:
   .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }
   .edit .fields > * { display: contents; }
   .edit .fields :is(input, select, .datefield, .combo) { justify-self: start; }
-  .board { grid-auto-columns: calc(100% - 4ch); gap: 10px; padding-bottom: 16px; scroll-snap-type: x mandatory; }  /* a day at a time; the next peeks in */
+  .board { grid-auto-columns: calc(100% - 4ch); gap: 10px; scroll-snap-type: x mandatory; }
+  .col { padding-bottom: 16px; }  /* a day at a time; the next peeks in */
   svg.chart text { font-size: 20px; }  /* 600-unit-wide charts render at ~0.55x here */
   svg.chart.only-wide { display: none; }
   svg.chart.only-narrow { display: block; }

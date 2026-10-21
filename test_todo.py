@@ -133,7 +133,21 @@ class StoreTest(unittest.TestCase):
         day = todo.groups(todo.tasks(self.db, T), T, "upcoming")[3]
         self.assertEqual([t["title"] for t in day["rows"]], ["a", "c", "b"])
 
-    def test_old_files_gain_the_pos_column(self):
+    def test_a_dropped_task_goes_below_the_whole_day(self):
+        self.add("standup thu 9am"), self.add("urgent thing thu p1")
+        a, b = self.add("a today p1"), self.add("b today 8am")
+        todo.drop(self.db, a, d(10, 22))
+        todo.drop(self.db, b, d(10, 22))  # an earlier time and a higher priority still go last
+        day = lambda: [t["title"] for t in todo.groups(todo.tasks(self.db, T), T, "upcoming")[3]["rows"]]
+        self.assertEqual(day(), ["standup", "urgent thing", "a", "b"])
+        todo.move(self.db, b, d(10, 22))  # the date menu puts it back in the normal order: 8am comes first
+        self.assertEqual(day(), ["b", "standup", "urgent thing", "a"])
+        todo.update(self.db, a, {**todo.get(self.db, a), "title": "a2"})  # an edit on the same day keeps the drop
+        self.assertEqual(day()[-1], "a2")
+        todo.update(self.db, a, {**todo.get(self.db, a), "due": d(10, 23)})  # a new date clears it
+        self.assertIsNone(todo.get(self.db, a)["dropped"])
+
+    def test_old_files_gain_the_new_columns(self):
         old = Path(self.tmp.name) / "old.sqlite"
         con = sqlite3.connect(old)
         con.execute("CREATE TABLE task (id INTEGER PRIMARY KEY, title TEXT NOT NULL, project TEXT,"  # before pos
@@ -145,7 +159,8 @@ class StoreTest(unittest.TestCase):
         todo.init(old)
         self.assertEqual([t["title"] for t in todo.tasks(old, T)], ["x"])
         todo.move(old, 1, T)
-        self.assertEqual(todo.get(old, 1)["pos"], 2)
+        todo.drop(old, 1, T)
+        self.assertEqual((todo.get(old, 1)["pos"], todo.get(old, 1)["dropped"]), (2, 1))
 
     def test_update_and_delete(self):
         a = self.add("x tomorrow")

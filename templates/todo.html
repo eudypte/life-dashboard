@@ -135,19 +135,15 @@
     if (input.closest(".when") && /^[1-9]\d{3}-/.test(input.value)) input.form.requestSubmit();
   });
 
-  // Upcoming board: drag a card onto another day's column to move it there. A dashed placeholder the size
-  // of the card shows where it will land, by the server's order within a day: time, then priority, then
-  // the last one moved there last (todo._sort_key). Mouse only; on touch screens the date menu moves tasks.
+  // Upcoming board: drag a card onto another day's column to move it to the bottom of that day. A dashed
+  // placeholder the size of the card shows it there. Mouse only; on touch screens the date menu moves tasks.
   let dragged = null;
   const ph = Object.assign(document.createElement("div"), { className: "placeholder" });
   function place(col) {
     if (!col) return ph.remove();
-    const time = dragged.dataset.time, pri = +dragged.dataset.pri, rows = col.querySelector(".rows");
-    const later = [...col.querySelectorAll(".rows > .t")]
-      .find(c => c.dataset.time > time || (c.dataset.time === time && +c.dataset.pri > pri));
     ph.style.height = `${dragged.offsetHeight}px`;
-    if (later) later.before(ph);
-    else if (rows) rows.append(ph);
+    const rows = col.querySelector(".rows");
+    if (rows) rows.append(ph);
     else col.querySelector(".dayadd").before(ph);
   }
   document.addEventListener("dragstart", e => {
@@ -171,7 +167,7 @@
     if (!col) return;
     e.preventDefault();
     card.classList.remove("dragging");
-    load(`/todo/${card.id.slice(1)}/due`, { method: "POST", body: new URLSearchParams({ due: col.dataset.day, next: q.form.next.value }) })
+    load(`/todo/${card.id.slice(1)}/due`, { method: "POST", body: new URLSearchParams({ due: col.dataset.day, drop: 1, next: q.form.next.value }) })
       .catch(() => location.reload());
   });
   document.addEventListener("dragend", () => {
