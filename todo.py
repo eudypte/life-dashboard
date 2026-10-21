@@ -10,6 +10,7 @@ import sqlite3
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 DEFAULT_DB = "~/.local/share/life-dashboard/todo.sqlite"
 SCHEMA = """CREATE TABLE IF NOT EXISTS task (
@@ -282,11 +283,12 @@ def _sort_key(t: dict):
     return t["due"] or dt.date.max, t["due_time"] or "99", t["priority"], t["id"]
 
 
-def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None, inbox=False):
+def _group(label, rows, mode="date", cls="", done=False, keep=False, note="", day=None, board=False):
     """mode: what the meta column shows for the due date ("time" when the group already is that day).
-    day: the date of an Upcoming column. inbox: say "inbox" for tasks with no project, as board cards do."""
+    day: the date of an Upcoming column. board: a column of the Upcoming board, whose cards can be
+    dragged and say "inbox" for tasks with no project."""
     return {"label": label, "rows": rows, "mode": mode, "cls": cls, "done": done, "keep": keep, "note": note,
-            "day": day, "inbox": inbox}
+            "day": day, "board": board}
 
 
 def week_view(today: dt.date, start: dt.date | None = None) -> dict:
@@ -319,9 +321,9 @@ def groups(ts: list[dict], today: dt.date, page: str, project: str | None = None
         first = first or today
         notes = {today: "Today", today + dt.timedelta(days=1): "Tomorrow"}
         days = [first + dt.timedelta(days=i) for i in range(7)]
-        return ([_group("Overdue", overdue, cls="warn", inbox=True)] if first == today else []) + [
+        return ([_group("Overdue", overdue, cls="warn", board=True)] if first == today else []) + [
             _group(f"{d:%b} {d.day}", [t for t in open_ if t["due"] == d], "time", keep=True,
-                   note=notes.get(d, f"{d:%A}"), day=d, inbox=True) for d in days]
+                   note=notes.get(d, f"{d:%A}"), day=d, board=True) for d in days]
     member = (lambda t: t["project"] == project) if page == "project" else (lambda t: not t["project"])
     return [_group("overdue", [t for t in overdue if member(t)], cls="warn"),
             _group("scheduled", [t for t in open_ if t["due"] and t["due"] >= today and member(t)]),
@@ -370,13 +372,15 @@ def when(t: dict, group: dict, today: dt.date) -> tuple[str, str] | None:
     return text, "warn" if t["due"] < today else ""
 
 
-def meta(t: dict, group: dict, today: dt.date, show_project: bool) -> list[tuple[str, str]]:
-    """The rest of a task row after its date, as (text, css class) parts."""
+def meta(t: dict, group: dict, today: dt.date, show_project: bool) -> list[tuple[str, str, str]]:
+    """The rest of a task row after its date, as (text, css class, link) parts; the project links to its page."""
     parts = []
     if group["done"] and t["repeat"]:
-        parts.append((f"↻ next {day_label(t['due'], today)}", ""))
+        parts.append((f"↻ next {day_label(t['due'], today)}", "", ""))
     elif t["repeat"]:
-        parts.append(("↻ " + repeat_label(t["repeat"]), ""))
-    if show_project and (t["project"] or group.get("inbox")):
-        parts.append(("#" + t["project"] if t["project"] else "inbox", ""))
+        parts.append(("↻ " + repeat_label(t["repeat"]), "", ""))
+    if show_project and t["project"]:
+        parts.append(("#" + t["project"], "", "/todo/project/" + quote(t["project"], safe="")))
+    elif show_project and group.get("board"):
+        parts.append(("inbox", "", "/todo/inbox"))
     return parts

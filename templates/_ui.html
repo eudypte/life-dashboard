@@ -67,11 +67,11 @@
   </form>
 </div>
 {%- else %}
-<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}">
+<div class="t{{ ' done' if g.done }}" id="t{{ t.id }}"{% if g.board %} draggable="true"{% endif %}>
   <form class="tick" method="post" action="/todo/{{ t.id }}/done"><input type="hidden" name="next" value="{{ here }}">
     {%- if g.done %}<input type="hidden" name="undo" value="1">{% endif -%}
     <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>
-  <a class="name" href="{{ here }}?edit={{ t.id }}#t{{ t.id }}">{{ t.title }}</a>
+  <a class="name" href="{{ here }}?edit={{ t.id }}#t{{ t.id }}"{% if g.board %} draggable="false"{% endif %}>{{ t.title }}</a>
   <span class="meta">
     {%- set w = t | task_when(g, today) %}
     {%- if w %}<details class="when"><summary{% if w[1] %} class="{{ w[1] }}"{% endif %} title="move to another day">{{ w[0] }}</summary>
@@ -82,7 +82,9 @@
           {%- endfor %}</form>
         <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">{{ datefield("due", t.due, true) }}<button class="btn">set</button></form>
       </div></details>{% endif %}
-    {%- for text, cls in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endfor -%}
+    {%- for text, cls, href in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}
+      {%- if href %}<a class="go" href="{{ href }}"{% if g.board %} draggable="false"{% endif %}>{{ text }}</a>{% else %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endif %}
+    {%- endfor -%}
   </span>
 </div>
 {%- endif %}

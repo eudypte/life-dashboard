@@ -41,7 +41,7 @@
       <a href="/todo/upcoming/{{ week.next }}" aria-label="next week">&gt;</a></span></div>
   <div class="tasks board">
   {% for g in groups if g.rows or g.keep %}
-    <section class="col"{% if g.day %} id="d{{ g.day }}"{% endif %}>
+    <section class="col"{% if g.day %} id="d{{ g.day }}" data-day="{{ g.day }}"{% endif %}>
       <div class="col-head">{% if g.day %}<span class="hi">{{ g.label }}</span> · {{ g.note }}{% else %}<span class="{{ g.cls }}">{{ g.label }}</span>{% endif %} <span class="dim">{{ g.rows | length or "" }}</span></div>
       {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, true, date_options) }}{% endfor %}</div>{% endif %}
       {% if g.day %}
@@ -112,7 +112,7 @@
       try { input.showPicker(); } catch { input.focus(); }
       return;
     }
-    const a = e.target.closest(".tasks a[href]");
+    const a = e.target.closest(".tasks a[href]:not(.go)");  // .go: a project link, a real page change
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
     load(a.href).then(() => document.querySelector(".edit .title")?.focus(), () => { location.href = a.href; });
@@ -133,6 +133,41 @@
     shown.textContent = input.value ? new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "pick a date";
     shown.classList.toggle("dim", !input.value);
     if (input.closest(".when") && /^[1-9]\d{3}-/.test(input.value)) input.form.requestSubmit();
+  });
+
+  // Upcoming board: drag a card onto another day's column to move it there. Mouse only;
+  // on touch screens the date menu moves tasks.
+  let dragged = null;
+  const clearDrop = keep => { for (const c of document.querySelectorAll(".col.drop")) if (c !== keep) c.classList.remove("drop"); };
+  document.addEventListener("dragstart", e => {
+    dragged = e.target.closest?.(".board .t[draggable=true]");
+    if (!dragged) return;
+    dragged.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragged.querySelector(".name").textContent);
+  });
+  document.addEventListener("dragover", e => {
+    const col = dragged && e.target.closest?.(".col[data-day]");
+    clearDrop(col);
+    if (!col) return;
+    e.preventDefault();  // a day column accepts the drop; overdue does not
+    col.classList.add("drop");
+  });
+  document.addEventListener("drop", e => {
+    const col = dragged && e.target.closest?.(".col[data-day]"), card = dragged;
+    dragged = null;
+    clearDrop();
+    if (!col) return;
+    e.preventDefault();
+    card.classList.remove("dragging");
+    if (card.closest(".col") === col) return;
+    load(`/todo/${card.id.slice(1)}/due`, { method: "POST", body: new URLSearchParams({ due: col.dataset.day, next: q.form.next.value }) })
+      .catch(() => location.reload());
+  });
+  document.addEventListener("dragend", () => {
+    dragged?.classList.remove("dragging");
+    dragged = null;
+    clearDrop();
   });
 
   // Project field in the edit form: themed suggestions in place of the browser's datalist dropdown,

@@ -192,10 +192,10 @@ class ViewTest(unittest.TestCase):
         self.assertEqual(todo.when(self.task(3), date_group, T), ("+ date", "faint"))
         self.assertEqual(todo.when(self.task(4, d(10, 23)), date_group, T), ("Fri 23", ""))
         self.assertIsNone(todo.when(t, done_group, T))
-        self.assertEqual(todo.meta(t, date_group, T, True), [("↻ weekly", ""), ("#home", "")])
-        self.assertEqual(todo.meta(t, done_group, T, False), [("↻ next Oct 18", "")])
-        card = {"done": False, "mode": "time", "inbox": True}  # Upcoming board cards name the inbox too
-        self.assertEqual(todo.meta(self.task(5, T), card, T, True), [("inbox", "")])
+        self.assertEqual(todo.meta(t, date_group, T, True), [("↻ weekly", "", ""), ("#home", "", "/todo/project/home")])
+        self.assertEqual(todo.meta(t, done_group, T, False), [("↻ next Oct 18", "", "")])
+        card = {"done": False, "mode": "time", "board": True}  # Upcoming board cards name the inbox too
+        self.assertEqual(todo.meta(self.task(5, T), card, T, True), [("inbox", "", "/todo/inbox")])
         self.assertEqual(todo.meta(self.task(6, T), date_group, T, True), [])
         self.assertEqual(todo.day_label(d(1, 5, 2027), T, long=True), "Tue Jan 5 2027")
 
