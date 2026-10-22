@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Reading · Life Dashboard{% endblock %}
+
+{% block main %}
+<fieldset>
+  <legend>[ Reading ]</legend>
+  {% if logged %}
+  <dl class="kv">
+    {% for b in now_reading %}
+    <dt>{{ "Now =" if loop.first }}</dt><dd><span class="hi">{{ b.title }}</span>{% if b.author %} <span class="dim">· {{ b.author }}</span>{% endif %}</dd>
+    {% if b.page is not none %}<dt></dt><dd>{% if b.pages %}<span class="b track acc"><i style="width:{{ b.page | pct(b.pages) }}%"></i></span> {% endif %}<span class="dim">p {{ b.page }}{% if b.pages %}/{{ b.pages }} · {{ (100 * b.page / b.pages) | round | int }}%{% endif %}</span></dd>{% endif %}
+    {% else %}
+    <dt>Now =</dt><dd><span class="dim">no book open</span></dd>
+    {% endfor %}
+    <dt>This year =</dt><dd><span class="acc">{{ year_books | plural("book") }}</span> · {{ "{:,}".format(year_pages) }} pages</dd>
+    <dt>This week =</dt><dd>{{ week_pages }} pages</dd>
+    <dt>Streak =</dt><dd>{{ streak[0] | plural("day") }} <span class="dim">· longest {{ streak[1] }}</span></dd>
+  </dl>
+  {% else %}
+  <p class="empty">nothing logged yet: reading.csv is missing or empty</p>
+  {% endif %}
+</fieldset>
+
+<fieldset>
+  <legend>[ Last 7 days ]</legend>
+  <div class="bars">
+  {% for d, n in week %}
+    <div{% if d == today %} class="cur"{% endif %}>
+      <span class="{{ 'hi' if d == today else 'dim' }}">{{ d.strftime("%a %d") }}</span>
+      {% if n %}<span class="b track acc"><i style="width:{{ n | pct(week_top) }}%"></i></span><span>{{ n }}</span>
+      {% else %}<span class="gap">· not read</span>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+  <dl class="kv" style="margin-top:8px">
+    <dt>Average =</dt><dd><span class="acc">{{ (week_pages / 7) | round | int }}</span> <span class="dim">pages/day</span></dd>
+  </dl>
+</fieldset>
+
+<fieldset class="span2">
+  <legend>[ Books ]</legend>
+  {% if finished %}
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th class="l">finished</th><th class="l">book</th><th class="l hide-narrow">author</th><th>pages</th><th>days</th></tr></thead>
+    <tbody>
+    {% for b in finished %}
+      <tr>
+        <td class="l dim">{{ b.finished.strftime("%b %d" if b.finished.year == today.year else "%Y-%m-%d") }}</td>
+        <td class="l wrap">{{ b.title }}</td>
+        <td class="l dim hide-narrow">{{ b.author }}</td>
+        <td>{{ b.pages or "?" }}</td>
+        <td class="dim">{{ (b.finished - b.started).days + 1 }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">no finished books yet</p>
+  {% endif %}
+</fieldset>
+{% endblock %}
+
+{% block footer %}read-only · refreshes every 60 s{% endblock %}

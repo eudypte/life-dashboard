@@ -63,7 +63,7 @@ class LoginTest(unittest.TestCase):
         self.assertEqual(call("GET", "/todo/parse?q=x", sec_fetch_mode="cors")[0], 401)  # fetch from todo.html
         self.assertEqual(call("POST", "/todo/add", {"q": "x"}, sec_fetch_mode="cors")[0], 401)
         self.assertEqual(call("POST", "/todo/1/delete")[0], 401)
-        for page in ("/calories", "/macros", "/weight", "/presets"):  # the other views stay public
+        for page in ("/calories", "/macros", "/weight", "/presets", "/reading"):  # the other views stay public
             status, _, body = call("GET", page)
             self.assertEqual(status, 200)
             self.assertNotIn(LOGIN_FORM, body)

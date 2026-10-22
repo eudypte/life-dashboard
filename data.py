@@ -211,6 +211,95 @@ def to_unit(kg: float, unit: str) -> float:
     return kg / KG_PER_LB if unit == "lb" else kg
 
 
+# ---------- reading ----------
+# reading.csv: one row per update, appended in time order; the page reached so far in
+# that book. Columns: date,time,book,author,page,pages,status (reading | done | dropped).
+
+STATUSES = ("reading", "done", "dropped")
+
+
+def _int(cell) -> int | None:
+    cell = (cell or "").strip()
+    return int(cell) if cell else None
+
+
+def _parse_reading(text: str) -> list[dict]:
+    out = []
+    for r in _csv(text):
+        try:
+            row = {
+                "date": dt.date.fromisoformat(r["date"].strip()),
+                "time": (r.get("time") or "").strip(),
+                "book": r["book"].strip(),
+                "author": (r.get("author") or "").strip(),
+                "page": _int(r.get("page")),
+                "pages": _int(r.get("pages")),
+                "status": (r.get("status") or "").strip().lower(),
+            }
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+        if row["book"]:
+            out.append(row)
+    return sorted(out, key=lambda r: (r["date"], r["time"]))
+
+
+def reading(cfg: Config) -> list[dict]:
+    return read_cached(cfg.data_dir / "reading.csv", _parse_reading) or []
+
+
+def books(rows: list[dict]) -> list[dict]:
+    """One entry per book (title, any case), in the order first logged. Later rows win;
+    a blank cell keeps the earlier value. A done row without a page counts as the last page."""
+    out: dict[str, dict] = {}
+    for r in rows:
+        b = out.setdefault(r["book"].casefold(), {
+            "title": r["book"], "author": "", "pages": None, "page": None,
+            "status": "reading", "started": r["date"], "finished": None})
+        b["title"] = r["book"]
+        b["author"] = r["author"] or b["author"]
+        b["pages"] = r["pages"] or b["pages"]
+        b["page"] = r["page"] if r["page"] is not None else b["page"]
+        b["status"] = r["status"] if r["status"] in STATUSES else b["status"]
+        b["finished"] = r["date"] if b["status"] == "done" else None
+        if b["status"] == "done" and r["page"] is None:
+            b["page"] = b["pages"] or b["page"]
+    return list(out.values())
+
+
+def pages_by_day(rows: list[dict]) -> dict[dt.date, int]:
+    """Pages read per date: how far each book moved past its furthest page before.
+    A book's first row counts from page 0; going back a page never counts."""
+    furthest: dict[str, int] = {}
+    length: dict[str, int] = {}
+    out: dict[dt.date, int] = {}
+    for r in rows:
+        key = r["book"].casefold()
+        length[key] = r["pages"] or length.get(key)
+        page = r["page"] if r["page"] is not None else length[key] if r["status"] == "done" else None
+        if page is None:
+            continue
+        gain = page - furthest.get(key, 0)
+        if gain > 0:
+            furthest[key] = page
+            out[r["date"]] = out.get(r["date"], 0) + gain
+    return out
+
+
+def streaks(by_day: dict[dt.date, int], today: dt.date) -> tuple[int, int]:
+    """(current, longest) runs of days with pages read. Today not read yet keeps yesterday's run."""
+    day = today if by_day.get(today) else today - dt.timedelta(days=1)
+    current = 0
+    while by_day.get(day):
+        current += 1
+        day -= dt.timedelta(days=1)
+    longest = run = 0
+    prev = None
+    for day in sorted(d for d, n in by_day.items() if n):
+        run = run + 1 if prev and (day - prev).days == 1 else 1
+        longest, prev = max(longest, run), day
+    return current, longest
+
+
 # ---------- presets ----------
 
 def presets(cfg: Config) -> list[dict]:

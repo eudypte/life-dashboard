@@ -122,6 +122,32 @@ class DataTest(unittest.TestCase):
             os.environ.update(old)
         self.assertEqual(cfg, data.Config(Path("~/Sync/nutrition").expanduser(), 4, "lb"))
 
+    def test_reading_books_progress_and_pages_per_day(self):
+        self.write("reading.csv", "date,time,book,author,page,pages,status\n"
+                   "2026-10-01,21:00,Dune,Frank Herbert,40,412,reading\n"
+                   "2026-10-02,21:00,dune,,90,,\n"            # any case, blanks keep the earlier values
+                   "2026-10-02,22:00,Stoner,John Williams,30,278,reading\n"
+                   "2026-10-03,08:00,Dune,,80,,\n"            # went back: no pages
+                   "2026-10-04,21:00,Dune,,,,done\n"          # done without a page = to the end
+                   "2026-10-05,21:00,Stoner,,50,,dropped\n"
+                   "bad,row\n2026-10-06,21:00,Piranesi,,1")   # junk and a half-written last line
+        rows = data.reading(self.cfg)
+        self.assertEqual(data.pages_by_day(rows), {
+            dt.date(2026, 10, 1): 40, dt.date(2026, 10, 2): 80, dt.date(2026, 10, 4): 322, dt.date(2026, 10, 5): 20})
+        dune, stoner = data.books(rows)
+        self.assertEqual((dune["title"], dune["author"], dune["page"], dune["pages"], dune["status"]),
+                         ("Dune", "Frank Herbert", 412, 412, "done"))
+        self.assertEqual((dune["started"], dune["finished"]), (dt.date(2026, 10, 1), dt.date(2026, 10, 4)))
+        self.assertEqual((stoner["status"], stoner["finished"], stoner["page"]), ("dropped", None, 50))
+
+    def test_reading_streaks(self):
+        d = lambda n: dt.date(2026, 10, n)  # noqa: E731
+        by_day = {d(1): 5, d(2): 5, d(3): 5, d(5): 0, d(7): 9, d(8): 3}
+        self.assertEqual(data.streaks(by_day, d(8)), (2, 3))
+        self.assertEqual(data.streaks(by_day, d(9)), (2, 3))  # nothing yet today: yesterday's run holds
+        self.assertEqual(data.streaks(by_day, d(10)), (0, 3))
+        self.assertEqual(data.streaks({}, d(1)), (0, 0))
+        self.assertEqual(data.books([]), [])
 
 if __name__ == "__main__":
     unittest.main()

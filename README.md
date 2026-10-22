@@ -1,6 +1,6 @@
 # Life Dashboard
 
-Web dashboard over the `nutrition-log` data folder, plus a todo list, published at https://life.selimd.me.
+Web dashboard over the `nutrition-log` data folder (food, weight, reading), plus a todo list, published at https://life.selimd.me.
 It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing that writes, to its own SQLite file. The data rules come from the data handoff; `log_entry.py` is the source of truth.
 
 ## Config
@@ -13,7 +13,7 @@ It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing t
 
 ## Login
 
-The home page `/` and everything under `/todo` need a token; Calories, Macros, Weight and Presets stay public.
+The home page `/` and everything under `/todo` need a token; Calories, Macros, Weight, Reading and Presets stay public.
 A signed-out visit shows a single password box in place; the right token sets a cookie for a year that holds an HMAC of the token, never the token itself.
 Changing the token logs out every device.
 If `LIFE_DASHBOARD_TOKEN` is not set, the app still starts, logs a warning, and nothing unlocks.

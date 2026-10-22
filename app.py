@@ -1,4 +1,4 @@
-"""Life Dashboard: read-only views over the nutrition-log data folder, plus a todo list."""
+"""Life Dashboard: read-only views over the nutrition-log data folder (food, weight, reading), plus a todo list."""
 import datetime as dt
 import hashlib
 import hmac
@@ -251,6 +251,24 @@ def weight_view(request: Request, days: int = Query(30, ge=1, le=366)):
         stats=data.weight_stats(window),
         chart=weight_chart(window, all_ws, today, days, 1000, 280),
         chart_narrow=weight_chart(window, all_ws, today, days, 600, 320),
+    )
+
+
+@app.get("/reading")
+def reading_view(request: Request):
+    today = data.logical_today(CFG)
+    rows = data.reading(CFG)
+    books = data.books(rows)
+    by_day = data.pages_by_day(rows)
+    week = [(d, by_day.get(d, 0)) for d in (today - dt.timedelta(days=i) for i in range(6, -1, -1))]
+    finished = sorted((b for b in books if b["finished"]), key=lambda b: b["finished"], reverse=True)
+    return render(
+        request, "reading.html", "reading", logged=bool(rows), week=week,
+        week_pages=sum(n for _, n in week), week_top=max(n for _, n in week) or 1,
+        now_reading=[b for b in reversed(books) if b["status"] == "reading"], finished=finished,
+        year_books=sum(b["finished"].year == today.year for b in finished),
+        year_pages=sum(n for d, n in by_day.items() if d.year == today.year),
+        streak=data.streaks(by_day, today),
     )
 
 

@@ -92,6 +92,7 @@ footer { margin-top: 22px; font-size: 12px; color: var(--dim); }
 .bars.spill > div > :last-child:not(.gap) { grid-column: 4; }
 .bars .gap { grid-column: 2 / -1; color: var(--dim); }
 .bars .cur { color: var(--hi); }
+.kv .b { width: min(21ch, calc(100% - 17ch)); }  /* a progress bar inline in a value, text after it (reading) */
 
 /* ---------- entries ---------- */
 .entries { font-variant-numeric: tabular-nums; }
