@@ -349,6 +349,11 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
 :root:not([data-hover="current"]) :is(details.when .item, .ctx .item):hover { margin: 0 -4px; padding-inline: 4px; }  /* a little room around the text */
 :root:not([data-hover="current"]) .nav a:hover { margin: 0 -6px; padding: 1px 6px; }  /* the same block as the current row */
 :root:not([data-hover="current"]) .nav .sub a:hover { padding-left: calc(2ch + 6px); }
+/* quick-add #project and @label tokens follow the hover look: filled with their color, or a chip as in the preview line.
+   box-shadow, not padding, widens the fill: the mirror's glyphs must stay under the input's. */
+.tok.project { --lc: var(--accent); }
+:root:not([data-hover="current"]) :is(.tok.project, .tok.label) { color: var(--bg); background: var(--lc); box-shadow: -2px 0 0 var(--lc), 2px 0 0 var(--lc); }
+:root[data-hover="current"] :is(.tok.project, .tok.label) { background: var(--bg2); box-shadow: -3px 0 0 var(--bg2), 3px 0 0 var(--bg2); }
 @media (max-width: 720px) {
   :root:not([data-hover="current"]) :is(.nav a, .nav .sub a):hover { margin: 0 -3px; padding: 1px 3px; }  /* inline links: room without shifting the row */
 }
