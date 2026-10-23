@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_ui.html" import task_row, parsed, quickadd_input %}
+{% from "_ui.html" import task_row, parsed, quickadd_input with context %}
 {% set legend = {"today": "Today · " ~ today.strftime("%a %b ") ~ today.day, "inbox": "Inbox", "upcoming": "Upcoming"}.get(page, "@ " ~ label if label else "# " ~ project) %}
 {% block title %}Todo · Life Dashboard{% endblock %}
 {% block refresh %}{% endblock %}{# a refresh would wipe a half-typed task #}
@@ -23,12 +23,14 @@
 {% block main %}
 <fieldset class="span2">
   <legend>[ {{ legend }} ]</legend>
+  {% if not read_only %}
   <form class="add" id="quickadd" method="post" action="/todo/add">
     <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="project" value="{{ project or '' }}"><input type="hidden" name="label" value="{{ label or '' }}">
     <span class="plus">+</span>{{ quickadd_input('add to #' ~ project ~ '…' if project else 'add to @' ~ label ~ '…' if label else 'add a task…', "quick add", "qsug") }}
     <button class="btn">add ⏎</button>
   </form>
   <div class="preview" aria-live="polite">{{ parsed(none, today, false) }}</div>
+  {% endif %}
   <div class="flashes">
   {% if added %}<div class="flash"><span class="dim">added</span> {{ parsed(added, today) }}</div>{% endif %}
   {% if ticked %}
@@ -48,7 +50,7 @@
     <section class="col{{ ' today' if g.day == today }}"{% if g.day %} id="d{{ g.day }}" data-day="{{ g.day }}"{% endif %}>
       <div class="col-head">{% if g.day %}<span class="hi">{{ g.label }}</span> · {{ g.note }}{% else %}<span class="{{ g.cls }}">{{ g.label }}</span>{% endif %} <span class="dim">{{ g.rows | length or "" }}</span></div>
       {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, true, date_options) }}{% endfor %}</div>{% endif %}
-      {% if g.day %}
+      {% if g.day and not read_only %}
       <details class="dayadd" id="add-{{ g.day }}"><summary>+ add task</summary>
         <form class="add" method="post" action="/todo/add">
           <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="due" value="{{ g.day }}">
@@ -72,6 +74,7 @@
   </div>
   {% endif %}
 </fieldset>
+{% if not read_only %}{# signed out: read-only, no menu, no forms and no script #}
 {# right-click (long-press) menu for a project or a label; todo.html's script fills it in #}
 <div class="ctx" id="ctx" role="menu" hidden>
   <div class="ctx-head"></div>
@@ -110,7 +113,6 @@
     input.timer = setTimeout(async () => {
       const f = input.form, sent = input.value;
       const r = await fetch("/todo/parse?" + new URLSearchParams({ q: sent, page: f.page.value, project: f.project?.value || "", label: f.label?.value || "", due: f.due?.value || "" }));
-      if (r.status === 401) return location.reload();  // signed out: the page reloads as the login
       if (!r.ok || input.value !== sent) return;
       const parsed = document.createRange().createContextualFragment(await r.text()).firstElementChild;
       input.toks = JSON.parse(parsed.dataset.tokens).map(([a, b, kind]) => [a, b, kind, sent.slice(a, b)]);
@@ -134,8 +136,7 @@
   // on any failure, reload to show what the server has.
   async function load(url, init) {
     const r = await fetch(url, init);
-    if (r.status === 401) return location.reload();  // signed out elsewhere: the page reloads as the login
-    if (!r.ok) throw new Error(r.status);
+    if (!r.ok) throw new Error(r.status);  // 403 when signed out elsewhere: the caller reloads, read-only
     if (new URL(r.url).pathname !== location.pathname) return location.assign(r.url);
     const page = new DOMParser().parseFromString(await r.text(), "text/html");
     const row = document.activeElement?.closest(".t")?.id, x = document.querySelector(".tasks").scrollLeft;
@@ -411,6 +412,7 @@
   });
   document.addEventListener("focusout", e => { if (e.target.matches(".hl > input")) show(e.target, false); });
 </script>
+{% endif %}
 {% endblock %}
 
 {% block footer %}tasks are saved on the VM · no auto-refresh on this page{% endblock %}

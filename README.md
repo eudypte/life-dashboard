@@ -9,14 +9,16 @@ It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing t
 - Environment variables with the same names override it, and `LIFE_DASHBOARD_SETTINGS` points at a different settings file.
 - Daily targets live in `config.toml` in this folder and are re-read on change.
 - `TODO_DB` is the todo list's SQLite file, default `~/.local/share/life-dashboard/todo.sqlite`. The app refuses to start if it is inside `NUTRITION_DIR`.
-- `LIFE_DASHBOARD_TOKEN` is the login token for the home page and `/todo` (see Login), set only in the environment, never in this repo.
+- `LIFE_DASHBOARD_TOKEN` is the login token for changing the todo list (see Login), set only in the environment, never in this repo.
 
 ## Login
 
-The home page `/` and everything under `/todo` need a token; Calories, Macros, Weight, Reading and Presets stay public.
-A signed-out visit shows a single password box in place; the right token sets a cookie for a year that holds an HMAC of the token, never the token itself.
+Anyone can read every page; changing anything needs the token.
+Signed out, the home page and `/todo` are read-only: no quick add, ticking, dragging, date or project menus, and a "log in" link in the footer.
+The link opens a single password box and comes back to the same page; the right token sets a cookie for a year that holds an HMAC of the token, never the token itself.
+The server refuses every signed-out write: a fetch gets 403 and a plain form goes to the login box.
 Changing the token logs out every device.
-If `LIFE_DASHBOARD_TOKEN` is not set, the app still starts, logs a warning, and nothing unlocks.
+If `LIFE_DASHBOARD_TOKEN` is not set, the app still starts, logs a warning, and everything stays read-only.
 
 Generate a token (about 26 characters) and save it in your password manager:
 

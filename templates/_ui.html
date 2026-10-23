@@ -59,6 +59,7 @@
   {#- #}<input type="date" name="{{ name }}" value="{{ value or '' }}" aria-label="date"{{ " required" if required }}></label>
 {%- endmacro %}
 
+{# Needs the page's context (import it "with context"): read_only drops the controls. #}
 {% macro task_row(t, g, here, edit, today, rules, show_project, options) -%}
 {%- set pri = " p" ~ t.priority if t.priority < 4 and not g.done else "" %}
 {%- if edit == t.id %}
@@ -86,14 +87,20 @@
 </div>
 {%- else %}
 <div class="t{{ ' done' if g.done }}" id="t{{ t.id }}"
-  {%- if g.board %} draggable="true"{% endif %}>
+  {%- if g.board and not read_only %} draggable="true"{% endif %}>
+  {%- if read_only %}{# signed out: the same rows, nothing to press #}
+  <span class="box{{ pri }}">{{ "[x]" if g.done else "[ ]" }}</span>
+  <span class="name">{{ t.title }}</span>
+  {%- else %}
   <form class="tick" method="post" action="/todo/{{ t.id }}/done"><input type="hidden" name="next" value="{{ here }}">
     {%- if g.done %}<input type="hidden" name="undo" value="1">{% endif -%}
     <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>
   <a class="name" href="{{ here }}?edit={{ t.id }}#t{{ t.id }}"{% if g.board %} draggable="false"{% endif %}>{{ t.title }}</a>
+  {%- endif %}
   <span class="meta">
     {%- set w = t | task_when(g, today) %}
-    {%- if w %}<details class="when"><summary{% if w[1] %} class="{{ w[1] }}"{% endif %} title="move to another day">{{ w[0] }}</summary>
+    {%- if w and read_only %}<span{% if w[1] %} class="{{ w[1] }}"{% endif %}>{{ w[0] }}</span>
+    {%- elif w %}<details class="when"><summary{% if w[1] %} class="{{ w[1] }}"{% endif %} title="move to another day">{{ w[0] }}</summary>
       <div class="menu">
         <form class="opts" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">
           {%- for value, label, d in options %}

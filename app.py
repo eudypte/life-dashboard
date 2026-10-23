@@ -104,14 +104,15 @@ def render(request: Request, name: str, view: str, **ctx):
     return templates.TemplateResponse(request, name, {
         "view": view, "today": data.logical_today(CFG), "now": dt.datetime.now(),
         "conflicts": data.conflicts(CFG), "unit": CFG.weight_unit, "goal": goals(),
-        "themes": THEMES, "ranges": RANGES, "signed_in": signed_in(request), **ctx,
+        "themes": THEMES, "ranges": RANGES, "signed_in": signed_in(request),
+        "read_only": not signed_in(request), **ctx,
     })
 
 
 # ---------- login ----------
-# One token, set on the server, guards the home page and /todo (require_login); the other views stay public.
-# A signed-out page load gets the login form in place (200, so the deploy health check of / still passes),
-# and a fetch from todo.html gets 401, so the page reloads into the login.
+# Anyone can read every page; one token, set on the server, is needed to change anything (require_login).
+# Signed out, the home page and /todo render read-only, with a "log in" link in the footer.
+# A signed-out write is refused: a plain form post goes to the login form, a fetch from todo.html gets 403.
 
 COOKIE = "auth"
 if not os.environ.get("LIFE_DASHBOARD_TOKEN"):
@@ -156,17 +157,21 @@ class LoginNeeded(Exception):
 
 @app.exception_handler(LoginNeeded)
 def login_needed(request: Request, _: LoginNeeded):
-    return login_page(request, request.url.path + (f"?{request.url.query}" if request.url.query else ""))
+    """A form sent signed out: nothing changes; log in, then back to the page it came from."""
+    ref = urlsplit(request.headers.get("referer", ""))
+    page = ref.path + (f"?{ref.query}" if ref.query else "") if ref.netloc == request.headers.get("host") else "/todo"
+    return RedirectResponse("/login?next=" + quote(local(page), safe="/"), status_code=303)
 
 
 def require_login(request: Request):
+    """Reads are open to anyone; every write needs the login."""
     if request.method == "POST" and not same_origin(request):
         raise HTTPException(403)
-    if signed_in(request):
+    if request.method == "GET" or signed_in(request):
         return
-    if request.method == "GET" and request.headers.get("sec-fetch-mode", "navigate") == "navigate":
+    if request.headers.get("sec-fetch-mode", "navigate") == "navigate":
         raise LoginNeeded
-    raise HTTPException(401)
+    raise HTTPException(403)
 
 
 @app.get("/login")
@@ -196,7 +201,7 @@ def logout():
 
 # ---------- views ----------
 
-@app.get("/", dependencies=[Depends(require_login)])
+@app.get("/")
 def today_view(request: Request, date: dt.date | None = None):
     today = data.logical_today(CFG)
     date = min(date or today, today)
@@ -280,7 +285,7 @@ def presets_view(request: Request):
 # ---------- todo ----------
 # The only writes. Plain forms that answer 303 back to the page they came from;
 # with JS on, todo.html sends them with fetch and swaps in the changed parts of that page.
-# Every route on todo_app needs the login (require_login).
+# Anyone can read todo_app's pages; its writes need the login (require_login).
 
 todo_app = APIRouter(dependencies=[Depends(require_login)])
 
@@ -289,6 +294,7 @@ def todo_render(request: Request, page: str, project: str | None = None, edit: i
                 added: int | None = None, done: int | None = None, week: dt.date | None = None,
                 label: str | None = None):
     today = data.logical_today(CFG)
+    edit = edit if signed_in(request) else None  # signed out: read-only, no edit form
     ts = todo.tasks(TODO_DB, today)
     week_view = todo.week_view(today, week) if page == "upcoming" else None
     groups = todo.groups(ts, today, page, project or label, week_view and week_view["first"])

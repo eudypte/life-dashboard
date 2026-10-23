@@ -228,7 +228,7 @@ details.when { display: inline-block; position: relative; }
 details.when summary { display: inline; cursor: pointer; list-style: none; }
 details.when summary::-webkit-details-marker { display: none; }
 details.when summary:hover, details.when[open] summary { text-decoration: underline; text-underline-offset: 3px; }
-details.when summary.faint { opacity: .55; }
+details.when summary.faint, .t .meta > .faint { opacity: .55; }  /* the second: the same date, signed out */
 details.when .menu { position: absolute; z-index: 2; top: calc(100% + 2px); left: 0; display: grid; gap: 6px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--accent); text-align: left; white-space: nowrap; }
 details.when .opts { display: grid; gap: 2px; }
 details.when .item { display: flex; justify-content: space-between; gap: 3ch; font: inherit; color: var(--hi); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
