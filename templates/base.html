@@ -28,7 +28,7 @@
     <fieldset>
       <legend>[ Views ]</legend>
       <div class="links">
-      {% for key, label, href in [("today", "Today", "/"), ("calories", "Calories", "/calories"), ("macros", "Macros", "/macros"), ("weight", "Weight", "/weight"), ("todo", "Todo", "/todo"), ("reading", "Reading", "/reading")] %}
+      {% for key, label, href in [("today", "Today", "/"), ("calories", "Calories", "/calories"), ("macros", "Macros", "/macros"), ("weight", "Weight", "/weight"), ("todo", "Todo", "/todo"), ("reading", "Reading", "/reading"), ("media", "Media", "/media")] %}
         <a href="{{ href }}"{% if view == key %} aria-current="{{ 'true' if key == 'todo' else 'page' }}"{% endif %}><span class="mark">{{ "▶" if view == key else "▷" }} </span>{{ label }}</a>
       {% endfor %}
       </div>

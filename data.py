@@ -300,6 +300,51 @@ def streaks(by_day: dict[dt.date, int], today: dt.date) -> tuple[int, int]:
     return current, longest
 
 
+# ---------- media ----------
+# media.csv: one row per update, appended in time order, where a title is now.
+# Columns: date,time,title,kind,season,episode,episodes,position,runtime,status
+# kind: show | anime | movie | youtube; episodes: how many the season has; position: H:MM:SS
+# (or M:SS) into a movie; runtime: its length in minutes; status: watching | done | dropped.
+# The media page logs rows of the same shape to its own table (media.py), never here.
+
+MEDIA_STATUSES = ("watching", "done", "dropped")
+
+
+def seconds(position: str) -> int | None:
+    """H:MM:SS or M:SS as seconds; None if it is neither."""
+    parts = position.split(":")
+    if not 2 <= len(parts) <= 3 or not all(p.isdigit() for p in parts) or any(int(p) > 59 for p in parts[1:]):
+        return None
+    return sum(int(p) * 60 ** i for i, p in enumerate(reversed(parts)))
+
+
+def media_row(r: dict) -> dict | None:
+    """One update from either log; None if it has no date or title, or a number is not one."""
+    try:
+        row = {
+            "date": dt.date.fromisoformat(r["date"].strip()),
+            "time": (r.get("time") or "").strip(),
+            "title": r["title"].strip(),
+            "kind": (r.get("kind") or "").strip().lower(),
+            **{k: _int(r.get(k)) for k in ("season", "episode", "episodes", "runtime")},
+            "position": (r.get("position") or "").strip(),
+            "status": (r.get("status") or "").strip().lower(),
+        }
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+    if seconds(row["position"]) is None:
+        row["position"] = ""
+    return row if row["title"] else None
+
+
+def _parse_media(text: str) -> list[dict]:
+    return [row for row in map(media_row, _csv(text)) if row]
+
+
+def media(cfg: Config) -> list[dict]:
+    return read_cached(cfg.data_dir / "media.csv", _parse_media) or []
+
+
 # ---------- presets ----------
 
 def presets(cfg: Config) -> list[dict]:

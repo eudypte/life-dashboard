@@ -1,9 +1,10 @@
-"""Life Dashboard: read-only views over the nutrition-log data folder (food, weight, reading), plus a todo list."""
+"""Life Dashboard: read-only views over the nutrition-log data folder (food, weight, reading, media), plus a todo list."""
 import datetime as dt
 import hashlib
 import hmac
 import logging
 import os
+import re
 import tomllib
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import data
+import media
 import todo
 
 HERE = Path(__file__).parent
@@ -26,6 +28,7 @@ THEMES = {
 RANGES = (7, 30, 90)
 TODO_DB = todo.db_path(CFG.data_dir)  # refuses a path inside NUTRITION_DIR
 todo.init(TODO_DB)
+media.init(TODO_DB)  # the media page's own log shares the todo file
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -61,7 +64,7 @@ def weight_delta(kg) -> str:
 
 
 templates.env.filters |= {"n": fmt, "pct": pct, "plural": plural, "wt": weight, "wtd": weight_delta,
-                          "day_label": todo.day_label, "task_when": todo.when, "task_meta": todo.meta}
+                          "day_label": todo.day_label, "ago": media.ago, "clock": media.clock, "task_when": todo.when, "task_meta": todo.meta}
 
 
 def weight_chart(window, all_ws, end: dt.date, days: int, w: int = 600, h: int = 220):
@@ -111,7 +114,7 @@ def render(request: Request, name: str, view: str, **ctx):
 
 # ---------- login ----------
 # Anyone can read every page; one token, set on the server, is needed to change anything (require_login).
-# Signed out, the home page and /todo render read-only, with a "log in" link in the footer.
+# Signed out, the home page, /todo and /media render read-only, with a "log in" link in the footer.
 # A signed-out write is refused: a plain form post goes to the login form, a fetch from todo.html gets 403.
 
 COOKIE = "auth"
@@ -282,8 +285,70 @@ def presets_view(request: Request):
     return render(request, "presets.html", "presets", presets=data.presets(CFG))
 
 
+# ---------- media ----------
+# media.csv (written outside the app) and the page's own log, read as one. +1, done, a tick or quick add append a row
+# to the page's log. Plain forms that answer 303 back to /media. Writes need the login, as on todo_app.
+
+media_app = APIRouter(dependencies=[Depends(require_login)])
+
+
+def media_titles() -> list[dict]:
+    return media.titles(media.merged(data.media(CFG), media.page_rows(TODO_DB)))
+
+
+@media_app.get("/media")
+def media_view(request: Request):
+    ts = media_titles()
+    return render(request, "media.html", "media", logged=bool(ts),
+                  watching=[t for t in ts if t["status"] == "watching"],
+                  finished=[t for t in ts if t["status"] != "watching"],
+                  seasons=media.seasons, is_movie=media.is_movie, seconds=data.seconds)
+
+
+def media_log(**row) -> RedirectResponse:
+    now = dt.datetime.now()
+    media.log(TODO_DB, {"date": data.logical_today(CFG), "time": now.strftime("%H:%M:%S"), **row})
+    return RedirectResponse("/media", status_code=303)
+
+
+@media_app.post("/media/log")
+async def media_add(request: Request):
+    """Quick add. A title already logged keeps its spelling."""
+    f = await form(request)
+    row = media.parse(f.get("q", ""))
+    if not row["title"]:
+        return RedirectResponse("/media", status_code=303)
+    known = next((t for t in media_titles() if t["title"].casefold() == row["title"].casefold()), None)
+    if known:
+        row["title"] = known["title"]
+    elif row["position"]:
+        row["kind"] = "movie"
+    return media_log(**row)
+
+
+@media_app.post("/media/step")
+async def media_step(request: Request):
+    """+1, done, or a tick (at=season:episode, season blank when the title has none) on a logged title."""
+    f = await form(request)
+    t = next((t for t in media_titles() if t["title"] == f.get("title")), None)
+    if not t:
+        raise HTTPException(404)
+    if f.get("do") == "done":
+        return media_log(title=t["title"], status="done")
+    if f.get("do") == "next":
+        season, episode = media.step(t)
+    elif m := re.fullmatch(r"(\d*):(\d+)", f.get("at", "")):
+        season, episode = int(m[1]) if m[1] else None, int(m[2])
+    else:
+        return RedirectResponse("/media", status_code=303)
+    return media_log(title=t["title"], season=season, episode=episode, status="watching")
+
+
+app.include_router(media_app)
+
+
 # ---------- todo ----------
-# The only writes. Plain forms that answer 303 back to the page they came from;
+# The other writes. Plain forms that answer 303 back to the page they came from;
 # with JS on, todo.html sends them with fetch and swaps in the changed parts of that page.
 # Anyone can read todo_app's pages; its writes need the login (require_login).
 

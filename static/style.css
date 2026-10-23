@@ -288,6 +288,24 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
 .board .edit .fields > * { display: contents; }
 .board .edit .fields :is(input, select, .datefield, .combo) { justify-self: start; max-width: 100%; }
 
+/* ---------- media ---------- */
+.shows { margin-top: 10px; }
+.show + .show { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--bg2); }
+.show .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 2ch; align-items: baseline; }
+.show .ti { color: var(--hi); overflow-wrap: anywhere; min-width: 0; }
+.show .kind { font-size: 12px; color: var(--dim); }
+.show .when { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.step { font: inherit; font-size: 12px; color: var(--accent); background: none; border: 1px solid var(--accent); padding: 0 6px; margin-left: 4px; cursor: pointer; }
+.seas { display: grid; grid-template-columns: 3ch minmax(0, max-content) max-content; justify-content: start; column-gap: 1ch; align-items: center; font-size: 12px; margin-top: 2px; }
+.seas .b { width: 40ch; max-width: 100%; }  /* the track pattern is 40 characters */
+.ep { color: var(--c); } .ts { color: var(--p); }
+/* one tick per episode: watched, the next one, not yet */
+.ticks { display: flex; flex-wrap: wrap; gap: 3px; padding: 2px 0; }
+.tk { display: block; width: 1.1ch; height: 1.1em; padding: 0; border: 0; background: none; box-shadow: inset 0 0 0 1px var(--dim); }
+.tk.w { background: var(--c); box-shadow: none; }
+.tk.nx { box-shadow: inset 0 0 0 1px var(--accent); }
+button.tk { cursor: pointer; }
+
 /* ---------- narrow screens ---------- */
 @media (max-width: 1000px) {
   .main { grid-template-columns: minmax(0, 1fr); }
@@ -353,13 +371,16 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
    A filled button swaps the other way: its fill becomes the text and an outline keeps its size. */
 .link, .js .datefield { --lc: var(--accent); }
 .dayadd .under .link, .t .box { --lc: var(--hi); }
-.btn { --lc: var(--accent); }
+.btn, .step { --lc: var(--accent); }
 details.del summary, details.del .btn, .ctx-delete .btn { --lc: var(--warn); }
 .t .box.p1 { --lc: var(--warn); } .t .box.p2 { --lc: var(--f); } .t .box.p3 { --lc: var(--p); } .t.done .box { --lc: var(--kcal); }
 :root:not([data-hover="current"]) :is(.link, details.del summary, .t .box, .js .datefield):hover { color: var(--bg); background: var(--lc); text-decoration: none; }
 :root:not([data-hover="current"]) .btn:hover { color: var(--lc); background: var(--bg); box-shadow: inset 0 0 0 1px var(--lc); }
 :root[data-hover="current"] :is(.link, .t .box):hover { color: var(--hi); }
 :root[data-hover="current"] :is(.btn, details.del summary, .js .datefield):hover { text-decoration: underline; text-underline-offset: 3px; }
+button.tk:hover { background: var(--accent); box-shadow: none; }
+:root:not([data-hover="current"]) .step:hover { color: var(--bg); background: var(--lc); }
+:root[data-hover="current"] .step:hover { text-decoration: underline; text-underline-offset: 3px; }
 .swatch:not([aria-current]):hover { outline: 1px solid var(--dim); outline-offset: 2px; }
 
 /* quick-add #project and @label tokens follow the hover look: filled with their color, or a chip as in the preview line.

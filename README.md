@@ -1,7 +1,7 @@
 # Life Dashboard
 
-Web dashboard over the `nutrition-log` data folder (food, weight, reading), plus a todo list, published at https://life.selimd.me.
-It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing that writes, to its own SQLite file. The data rules come from the data handoff; `log_entry.py` is the source of truth.
+Web dashboard over the `nutrition-log` data folder (food, weight, reading, media), plus a todo list, published at https://life.selimd.me.
+It never writes to `NUTRITION_DIR`; the todo list at `/todo` and the media log at `/media` are the only things that write, to their own SQLite file. The data rules come from the data handoff; `log_entry.py` is the source of truth.
 
 ## Config
 
@@ -9,12 +9,13 @@ It never writes to `NUTRITION_DIR`; the todo list at `/todo` is the only thing t
 - Environment variables with the same names override it, and `LIFE_DASHBOARD_SETTINGS` points at a different settings file.
 - Daily targets live in `config.toml` in this folder and are re-read on change.
 - `TODO_DB` is the todo list's SQLite file, default `~/.local/share/life-dashboard/todo.sqlite`. The app refuses to start if it is inside `NUTRITION_DIR`.
-- `LIFE_DASHBOARD_TOKEN` is the login token for changing the todo list (see Login), set only in the environment, never in this repo.
+- `/media` reads `media.csv` in `NUTRITION_DIR`, appended outside the app like `reading.csv`: `date,time,title,kind,season,episode,episodes,position,runtime,status` (see `data.py`). Its +1, done, ticks and quick add go to a `media_log` table in `TODO_DB`, and the page shows both logs merged in time order.
+- `LIFE_DASHBOARD_TOKEN` is the login token for changing the todo list and the media log (see Login), set only in the environment, never in this repo.
 
 ## Login
 
 Anyone can read every page; changing anything needs the token.
-Signed out, the home page and `/todo` are read-only: no quick add, ticking, dragging, date or project menus, and a "log in" link in the footer.
+Signed out, the home page, `/todo` and `/media` are read-only: no quick add, ticking, dragging, date or project menus, and a "log in" link in the footer.
 The link opens a single password box and comes back to the same page; the right token sets a cookie for a year that holds an HMAC of the token, never the token itself.
 The server refuses every signed-out write: a fetch gets 403 and a plain form goes to the login box.
 Changing the token logs out every device.
@@ -46,7 +47,7 @@ To change the token, edit the file and restart the service.
 | App service | `~/.config/systemd/user/life-dashboard.service`, `127.0.0.1:8090` |
 | Auto-deploy | `life-dashboard-deploy.timer` runs `deploy.sh` every 2 minutes |
 | Public access | Cloudflare Tunnel route `life.selimd.me` to `http://127.0.0.1:8090` |
-| Todo list | `~/.local/share/life-dashboard/todo.sqlite`, the only copy (see Backup) |
+| Todo list, media log | `~/.local/share/life-dashboard/todo.sqlite`, the only copy (see Backup) |
 
 ## Workflow
 
@@ -71,7 +72,7 @@ Rules: never edit `~/life-dashboard` on the VM, and never force-push `main`. Uni
 
 ## Backup
 
-The todo list lives only in `TODO_DB`. Copy it nightly with a crontab line on the VM (needs `apt install sqlite3`):
+The todo list and the media page's log live only in `TODO_DB`. Copy it nightly with a crontab line on the VM (needs `apt install sqlite3`):
 
 ```bash
 0 3 * * * sqlite3 ~/.local/share/life-dashboard/todo.sqlite ".backup $HOME/todo-backup.sqlite"

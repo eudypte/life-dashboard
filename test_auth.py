@@ -60,7 +60,7 @@ class LoginTest(unittest.TestCase):
         task = app.todo.add(app.TODO_DB, app.todo.parse("read me today #home @deep", app.data.logical_today(app.CFG), None),
                             app.dt.datetime.now())
         for page in ("/", "/todo", "/todo/inbox", "/todo/upcoming", f"/todo/inbox?edit={task}", "/todo/project/home",
-                     "/todo/label/deep", "/calories", "/macros", "/weight", "/presets", "/reading"):
+                     "/todo/label/deep", "/calories", "/macros", "/weight", "/presets", "/reading", "/media"):
             status, _, body = call("GET", page, sec_fetch_mode="navigate")
             self.assertEqual(status, 200, page)
             self.assertNotIn(LOGIN_FORM, body)
@@ -75,19 +75,22 @@ class LoginTest(unittest.TestCase):
     def test_no_cookie_cannot_write(self):
         posts = lambda routes: [r.path for r in routes if "POST" in (getattr(r, "methods", None) or ())]  # noqa: E731
         self.assertEqual(posts(app.app.routes), ["/login", "/logout"])  # every other write is on todo_app
-        writes = posts(app.todo_app.routes)
-        self.assertGreaterEqual(len(writes), 10)
+        writes = posts(app.todo_app.routes) + posts(app.media_app.routes)
+        self.assertGreaterEqual(len(writes), 12)
         today = app.data.logical_today(app.CFG)
         task = app.todo.add(app.TODO_DB, app.todo.parse("keep me #home @deep", today, None), app.dt.datetime.now())
-        before = (app.todo.tasks(app.TODO_DB, today), app.todo.projects(app.TODO_DB), app.todo.label_colors(app.TODO_DB))
-        f = {"q": "new task", "next": "/todo", "title": "changed", "name": "y", "due": "today", "color": "p"}
+        app.media.log(app.TODO_DB, {"date": today, "time": "09:00:00", "title": "changed", "season": 1, "episode": 1})
+        before = (app.todo.tasks(app.TODO_DB, today), app.todo.projects(app.TODO_DB), app.todo.label_colors(app.TODO_DB),
+                  app.media.page_rows(app.TODO_DB))
+        f = {"q": "new task", "next": "/todo", "title": "changed", "name": "y", "due": "today", "color": "p", "do": "next"}
         for path in writes:
             path = path.replace("{task_id}", str(task)).replace("{name}", "home" if "project" in path else "deep")
             self.assertEqual(call("POST", path, f, sec_fetch_mode="cors")[0], 403, path)  # a fetch from todo.html
             status, headers, _ = call("POST", path, f, referer="http://127.0.0.1:8090/todo/inbox?x=1")  # a plain form
             self.assertEqual((status, headers["location"]), (303, "/login?next=/todo/inbox%3Fx%3D1"), path)
         self.assertEqual(call("POST", "/todo/add", f, referer="https://evil.example/x")[1]["location"], "/login?next=/todo")
-        self.assertEqual((app.todo.tasks(app.TODO_DB, today), app.todo.projects(app.TODO_DB), app.todo.label_colors(app.TODO_DB)), before)
+        self.assertEqual((app.todo.tasks(app.TODO_DB, today), app.todo.projects(app.TODO_DB), app.todo.label_colors(app.TODO_DB),
+                          app.media.page_rows(app.TODO_DB)), before)
 
     def test_login_page(self):
         status, _, body = call("GET", "/login")
@@ -125,6 +128,13 @@ class LoginTest(unittest.TestCase):
         self.assertEqual(call("GET", "/todo/parse?q=x", cookie=jar)[0], 200)
         self.assertEqual(call("POST", "/todo/add", {"q": "x", "next": "/todo"}, cookie=jar)[0], 303)
         self.assertEqual(call("GET", "/login?next=/todo/inbox", cookie=jar)[1]["location"], "/todo/inbox")
+        self.assertIn('action="/media/log"', call("GET", "/media", cookie=jar)[2])
+        self.assertEqual(call("POST", "/media/log", {"q": "Signed In s1e1"}, cookie=jar)[1]["location"], "/media")
+        self.assertEqual(call("POST", "/media/step", {"title": "Signed In", "do": "next"}, cookie=jar)[0], 303)
+        self.assertEqual(call("POST", "/media/step", {"title": "Signed In", "at": "1:5"}, cookie=jar)[0], 303)
+        self.assertEqual([(r["season"], r["episode"]) for r in app.media.page_rows(app.TODO_DB) if r["title"] == "Signed In"],
+                         [(1, 1), (1, 2), (1, 5)])
+        self.assertEqual(call("POST", "/media/step", {"title": "nobody", "do": "next"}, cookie=jar)[0], 404)
         with mock.patch.dict(os.environ, {"LIFE_DASHBOARD_TOKEN": TOKEN + "2"}):  # a new token logs it out
             self.assertIn(LOG_IN, call("GET", "/todo", cookie=jar)[2])
             self.assertEqual(call("POST", "/todo/add", {"q": "x"}, cookie=jar, sec_fetch_mode="cors")[0], 403)
@@ -144,6 +154,7 @@ class LoginTest(unittest.TestCase):
     def test_foreign_origin(self):
         jar, evil = self.jar(), {"origin": "https://evil.example"}
         self.assertEqual(call("POST", "/todo/add", {"q": "x"}, cookie=jar, **evil)[0], 403)
+        self.assertEqual(call("POST", "/media/log", {"q": "x"}, cookie=jar, **evil)[0], 403)
         self.assertEqual(self.login(**evil)[0], 403)
         self.assertEqual(call("POST", "/todo/add", {"q": "x", "next": "/todo"}, cookie=jar,
                               origin="http://127.0.0.1:8090")[0], 303)

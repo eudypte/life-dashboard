@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Media · Life Dashboard{% endblock %}
+{% block refresh %}{% endblock %}{# a refresh would wipe a half-typed log line #}
+
+{% macro where(t) -%}
+  {%- if is_movie(t) %}{{ t.position or "movie" }}
+  {%- elif t.episode is not none %}{{ "S" ~ t.season ~ " " if t.season is not none }}E{{ t.episode }}
+  {%- elif t.season is not none %}S{{ t.season }}{% endif -%}
+{%- endmacro %}
+
+{% block main %}
+<fieldset class="span2">
+  <legend>[ Watching ]</legend>
+  {% if not read_only %}
+  <form class="add" method="post" action="/media/log">
+    <span class="plus">+</span><input name="q" placeholder="log: severance s2e8 · frieren e20 · dune 1:12:40" autocomplete="off" spellcheck="false" aria-label="log what you watched" required>
+    <button class="btn">log ⏎</button>
+  </form>
+  <div class="preview"><span class="hint">title, then s2e8 · e20 · 1:12:40, then done or drop</span></div>
+  {% endif %}
+  <div class="shows">
+  {% for t in watching %}
+    <div class="show">
+      <div class="head">
+        <span class="ti">{{ t.title }}{% if t.kind %} <span class="kind">· {{ t.kind }}</span>{% endif %}</span>
+        <span class="when">{{ t.last | ago(today) }}
+          {%- if not read_only %}
+          <form class="inline" method="post" action="/media/step"><input type="hidden" name="title" value="{{ t.title }}">
+            {%- if not is_movie(t) %} <button class="step" name="do" value="next" aria-label="+1 episode of {{ t.title }}">+1</button>{% endif %}
+            {#- #} <button class="step" name="do" value="done" aria-label="{{ t.title }} done">done</button></form>
+          {%- endif %}</span>
+      </div>
+      {% if is_movie(t) %}
+      <div class="seas"><span class="dim">at</span>
+        {%- if t.runtime %}<span class="b track mp"><i style="width:{{ (seconds(t.position) or 0) | pct(t.runtime * 60) }}%"></i></span>{% else %}<span></span>{% endif %}
+        <span><span class="ts">{{ t.position or "0:00" }}</span>{% if t.runtime %}<span class="dim">/{{ (t.runtime * 60) | clock }}</span>{% endif %}</span></div>
+      {% else %}
+      {% for s in seasons(t) %}
+      {%- set label = "S" ~ s.season if s.season is not none else "ep" %}
+      <div class="seas"><span class="{{ 'hi' if loop.last else 'dim' }}">{{ label }}</span>
+        {%- if read_only %}
+        <span class="ticks">{% for e, state in s.eps %}<i class="tk {{ state }}" title="{{ label }} E{{ e }}"></i>{% endfor %}</span>
+        {%- else %}
+        <form class="ticks" method="post" action="/media/step"><input type="hidden" name="title" value="{{ t.title }}">
+          {%- for e, state in s.eps %}<button class="tk {{ state }}" name="at" value="{{ s.season if s.season is not none }}:{{ e }}" title="{{ label }} E{{ e }}" aria-label="watched {{ t.title }} up to {{ label }} E{{ e }}"></button>{% endfor %}</form>
+        {%- endif %}
+        <span>{% if s.total and s.watched >= s.total %}<span class="kcal">✓</span>{% else %}<span class="ep">{{ s.watched }}</span>{% if s.total %}<span class="dim">/{{ s.total }}</span>{% endif %}{% endif %}</span></div>
+      {% endfor %}
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="empty">{{ "nothing in progress" if logged else "nothing logged yet: media.csv is missing or empty" }}</p>
+  {% endfor %}
+  </div>
+</fieldset>
+
+{% if finished %}
+<fieldset class="span2">
+  <legend>[ Finished ]</legend>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th class="l">when</th><th class="l">title</th><th class="l hide-narrow">kind</th><th>at</th></tr></thead>
+    <tbody>
+    {% for t in finished %}
+      <tr>
+        <td class="l dim">{{ t.last | ago(today) }}</td>
+        <td class="l wrap">{{ t.title }}</td>
+        <td class="l dim hide-narrow">{{ t.kind }}</td>
+        <td>{% if t.status == "dropped" %}<span class="warn">dropped</span> {% endif %}<span class="dim">{{ where(t) }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</fieldset>
+{% endif %}
+{% endblock %}
+
+{% block footer %}no auto-refresh on this page{% endblock %}
