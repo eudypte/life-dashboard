@@ -29,9 +29,15 @@ ORDER_SCHEMA = """CREATE TABLE IF NOT EXISTS media_order (
   pos INTEGER NOT NULL   -- its place in the list, set by dragging
 )"""
 COLUMNS = ("date", "time", "title", "kind", "season", "episode", "episodes", "position", "runtime", "status")
-# quick add: "severance s2e8", "frieren e20", "dune 1:12:40", any of them with "done" or "drop" last
+# quick add: "severance s2e8", "frieren e20", "dune 1:12:40", "the bear s3e8 5:45" (paused in that episode),
+# any of them with "done" or "drop" last
 STATUS_RE = re.compile(r"\s+(done|drop(?:ped)?)$", re.I)
-WHERE_RE = re.compile(r"\s+(?:s(\d{1,3})\s*e(\d{1,4})|e(\d{1,4})|(\d{1,2}:\d{2}(?::\d{2})?))$", re.I)
+POSITION_RE = re.compile(r"\s+(\d+:\d+(?::\d+)?)$")
+EPISODE_RE = re.compile(r"\s+(?:s(\d{1,3})\s*e(\d{1,4})|e(\d{1,4}))$", re.I)
+ERRORS = {  # why quick add logged nothing, shown under the box
+    "title": "nothing logged: start with the title, e.g. the bear s3e8 5:45",
+    "time": "nothing logged: a time must be m:ss or h:mm:ss, e.g. 5:45 or 1:12:40",
+}
 
 
 def init(path: Path) -> None:
@@ -59,7 +65,8 @@ def merged(csv_rows: list[dict], log_rows: list[dict]) -> list[dict]:
 
 def titles(rows: list[dict]) -> list[dict]:
     """One entry per title (any case), last watched first. Later rows win; a blank cell keeps the
-    earlier value. A new season without an episode starts before its first episode."""
+    earlier value. A new season without an episode starts before its first episode. A row with an episode
+    and a position is partway through that episode; with an episode and no position, that episode is done."""
     out: dict[str, dict] = {}
     for r in rows:
         t = out.setdefault(r["title"].casefold(), {
@@ -69,11 +76,13 @@ def titles(rows: list[dict]) -> list[dict]:
         t["kind"] = r["kind"] or t["kind"]
         t["runtime"] = r["runtime"] or t["runtime"]
         if r["season"] is not None and r["season"] != t["season"]:
-            t["season"], t["episode"] = r["season"], None
-        t["episode"] = r["episode"] if r["episode"] is not None else t["episode"]
+            t["season"], t["episode"], t["position"] = r["season"], None, ""
+        if r["episode"] is not None:
+            t["episode"], t["position"] = r["episode"], r["position"]
+        else:
+            t["position"] = r["position"] or t["position"]
         if r["episodes"]:
             t["episodes"][t["season"]] = r["episodes"]
-        t["position"] = r["position"] or t["position"]
         t["status"] = r["status"] if r["status"] in data.MEDIA_STATUSES else t["status"]
         t["last"], t["at"] = r["date"], (r["date"], r["time"])
     return sorted(out.values(), key=lambda t: t["at"], reverse=True)
@@ -102,10 +111,15 @@ def is_movie(t: dict) -> bool:
     return t["kind"] == "movie" or (t["episode"] is None and bool(t["position"]))
 
 
+def paused(t: dict) -> bool:
+    """Partway through its current episode, at t["position"]."""
+    return t["episode"] is not None and bool(t["position"]) and t["status"] != "done"
+
+
 def seasons(t: dict) -> list[dict]:
     """The tick rows: every season up to the current one whose length is known, plus the current one.
-    Each episode is watched ("w"), next ("nx") or not yet ("n"); unknown lengths show what was watched
-    and the next one."""
+    Each episode is watched ("w"), in progress ("ip": paused partway), next ("nx") or not yet ("n");
+    unknown lengths show what was watched and the next one."""
     out = []
     cur = t["season"]
     for s in [*sorted(s for s in t["episodes"] if s is not None and cur is not None and s < cur), cur]:
@@ -115,16 +129,19 @@ def seasons(t: dict) -> list[dict]:
         elif t["status"] == "done":
             watched = max(total or 0, t["episode"] or 0)
         else:
-            watched = t["episode"] or 0
-        nxt = watched + 1 if s == cur and t["status"] == "watching" and (not total or watched < total) else 0
+            watched = (t["episode"] or 0) - paused(t)
+        nxt = watched + 1 if s == cur and (paused(t) or t["status"] == "watching" and (not total or watched < total)) else 0
         out.append({"season": s, "total": total, "watched": watched,
-                    "eps": [(e, "w" if e <= watched else "nx" if e == nxt else "n")
+                    "eps": [(e, "w" if e <= watched else ("ip" if paused(t) else "nx") if e == nxt else "n")
                             for e in range(1, max(total or 0, watched, nxt) + 1)]})
     return out
 
 
 def step(t: dict) -> tuple[int | None, int]:
-    """(season, episode) after the current one: the next season once a season's known length is done."""
+    """(season, episode) after the current one: the next season once a season's known length is done.
+    Paused partway through an episode, that episode: +1 finishes it."""
+    if paused(t):
+        return t["season"], t["episode"]
     total = t["episodes"].get(t["season"])
     if t["season"] is not None and total and (t["episode"] or 0) >= total:
         return t["season"] + 1, 1
@@ -132,19 +149,22 @@ def step(t: dict) -> tuple[int | None, int]:
 
 
 def parse(q: str) -> dict:
-    """Quick add: a title, then optionally where (s2e8, e20, 1:12:40) and done or drop."""
+    """Quick add: a title, then optionally an episode (s2e8, e20), a time into it or into a movie (5:45,
+    1:12:40), and done or drop. "error" (a key of ERRORS) says why nothing can be logged."""
     q = " ".join(q.split())
-    row = {"season": None, "episode": None, "position": "", "status": ""}
+    row = {"season": None, "episode": None, "position": "", "status": "", "error": None}
     if m := STATUS_RE.search(q):
         row["status"] = "done" if m[1].lower() == "done" else "dropped"
         q = q[:m.start()]
-    if m := WHERE_RE.search(q):
-        if m[4] and data.seconds(m[4]) is None:
-            return {**row, "title": q}  # "12:75" is part of the title
-        row |= {"season": int(m[1]) if m[1] else None, "episode": int(m[2] or m[3]) if m[2] or m[3] else None,
-                "position": m[4] or ""}
-        q = q[:m.start()]
-    return {**row, "title": q.strip()}
+    if m := POSITION_RE.search(" " + q):
+        if data.seconds(m[1]) is None:
+            return {**row, "title": "", "error": "time"}
+        row["position"], q = m[1], (" " + q)[:m.start()]
+    if m := EPISODE_RE.search(" " + q):
+        row |= {"season": int(m[1]) if m[1] else None, "episode": int(m[2] or m[3])}
+        q = (" " + q)[:m.start()]
+    title = q.strip()
+    return {**row, "title": title, "error": None if title else "title"}
 
 
 def ago(d: dt.date, today: dt.date) -> str:

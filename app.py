@@ -298,12 +298,13 @@ def media_titles() -> list[dict]:
 
 
 @media_app.get("/media")
-def media_view(request: Request):
+def media_view(request: Request, error: str = "", q: str = ""):
+    """error and q: quick add logged nothing (media.ERRORS says why); the box keeps what was typed."""
     ts = media_titles()
-    return render(request, "media.html", "media", logged=bool(ts),
+    return render(request, "media.html", "media", logged=bool(ts), error=media.ERRORS.get(error), q=q if error else "",
                   watching=media.arrange([t for t in ts if t["status"] == "watching"], media.placed(TODO_DB)),
                   finished=[t for t in ts if t["status"] != "watching"],
-                  seasons=media.seasons, is_movie=media.is_movie, seconds=data.seconds)
+                  seasons=media.seasons, is_movie=media.is_movie, paused=media.paused, seconds=data.seconds)
 
 
 def media_log(**row) -> RedirectResponse:
@@ -317,12 +318,12 @@ async def media_add(request: Request):
     """Quick add. A title already logged keeps its spelling."""
     f = await form(request)
     row = media.parse(f.get("q", ""))
-    if not row["title"]:
-        return RedirectResponse("/media", status_code=303)
+    if error := row.pop("error"):
+        return RedirectResponse(f"/media?error={error}&q=" + quote(f.get("q", "").strip(), safe=""), status_code=303)
     known = next((t for t in media_titles() if t["title"].casefold() == row["title"].casefold()), None)
     if known:
         row["title"] = known["title"]
-    elif row["position"]:
+    elif row["position"] and row["episode"] is None:
         row["kind"] = "movie"
     return media_log(**row)
 

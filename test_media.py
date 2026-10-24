@@ -92,11 +92,36 @@ class MediaTest(unittest.TestCase):
             "severance s2e8": ("severance", 2, 8, "", ""), "Frieren  E20": ("Frieren", None, 20, "", ""),
             "dune 1:12:40": ("dune", None, None, "1:12:40", ""), "the bear s3 e5 done": ("the bear", 3, 5, "", "done"),
             "the penguin drop": ("the penguin", None, None, "", "dropped"), "blade runner 2049": ("blade runner 2049", None, None, "", ""),
-            "12:75": ("12:75", None, None, "", ""), "done": ("done", None, None, "", ""),  # a bare word is a title
+            "the bear s3e8 5:45": ("the bear", 3, 8, "5:45", ""), "frieren e20 12:30 done": ("frieren", None, 20, "12:30", "done"),
+            "andor s1e2 1:02:03 drop": ("andor", 1, 2, "1:02:03", "dropped"), "done": ("done", None, None, "", ""),  # a bare word is a title
         }
         for q, want in cases.items():
             p = media.parse(q)
-            self.assertEqual((p["title"], p["season"], p["episode"], p["position"], p["status"]), want, q)
+            self.assertEqual((p["title"], p["season"], p["episode"], p["position"], p["status"], p["error"]), (*want, None), q)
+
+    def test_quick_add_says_why_it_logged_nothing(self):
+        for q, error in {"s3e8 5:45": "title", "5:45": "title", "  ": "title", "the bear s3e8 5:75": "time",
+                         "dune 1:61:00": "time"}.items():
+            self.assertEqual(media.parse(q)["error"], error, q)
+            self.assertIn("nothing logged", media.ERRORS[error])
+
+    def test_paused_partway_through_an_episode(self):
+        t = titles("2026-10-11,,Bear,show,3,7,10,,,\n2026-10-12,,Bear,,3,8,,5:45,,\n")["Bear"]
+        self.assertTrue(media.paused(t))
+        self.assertFalse(media.is_movie(t))
+        self.assertEqual((t["episode"], t["position"]), (8, "5:45"))
+        s3 = media.seasons(t)[-1]
+        self.assertEqual((s3["watched"], [st for _, st in s3["eps"]]), (7, ["w"] * 7 + ["ip", "n", "n"]))
+        self.assertEqual(media.step(t), (3, 8))  # +1 finishes the paused episode
+        finished = titles("2026-10-11,,Bear,show,3,8,10,5:45,,\n2026-10-12,,Bear,,3,8,,,,\n")["Bear"]
+        self.assertFalse(media.paused(finished))  # the episode without a position: done
+        self.assertEqual(media.seasons(finished)[-1]["eps"][7:9], [(8, "w"), (9, "nx")])
+        later = titles("2026-10-11,,Bear,show,3,8,10,5:45,,\n2026-10-12,,Bear,,,,,20:10,,\n")["Bear"]
+        self.assertEqual((later["episode"], later["position"]), (8, "20:10"))  # a time alone moves within the episode
+        next_season = titles("2026-10-11,,Bear,show,3,8,10,5:45,,\n2026-10-12,,Bear,,4,,,,,\n")["Bear"]
+        self.assertFalse(media.paused(next_season))
+        done = titles("2026-10-11,,Bear,show,3,10,10,5:45,,\n2026-10-12,,Bear,,,,,,,done\n")["Bear"]
+        self.assertFalse(media.paused(done))
 
     def test_ago(self):
         self.assertEqual([media.ago(D - dt.timedelta(days=n), D) for n in (0, 1, 2, 6, 7)],

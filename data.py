@@ -303,8 +303,9 @@ def streaks(by_day: dict[dt.date, int], today: dt.date) -> tuple[int, int]:
 # ---------- media ----------
 # media.csv: one row per update, appended in time order, where a title is now.
 # Columns: date,time,title,kind,season,episode,episodes,position,runtime,status
-# kind: show | anime | movie | youtube; episodes: how many the season has; position: H:MM:SS
-# (or M:SS) into a movie; runtime: its length in minutes; status: watching | done | dropped.
+# kind: show | anime | movie | youtube; episodes: how many the season has; position: H:MM:SS (or M:SS)
+# into a movie, or with an episode, paused that far into it (no position: that episode is done);
+# runtime: a movie's length in minutes; status: watching | done | dropped.
 # The media page logs rows of the same shape to its own table (media.py), never here.
 
 MEDIA_STATUSES = ("watching", "done", "dropped")

@@ -135,6 +135,13 @@ class LoginTest(unittest.TestCase):
         self.assertEqual([(r["season"], r["episode"]) for r in app.media.page_rows(app.TODO_DB) if r["title"] == "Signed In"],
                          [(1, 1), (1, 2), (1, 5)])
         self.assertEqual(call("POST", "/media/step", {"title": "nobody", "do": "next"}, cookie=jar)[0], 404)
+        self.assertEqual(call("POST", "/media/log", {"q": "Signed In s1e6 5:45"}, cookie=jar)[1]["location"], "/media")
+        self.assertIn("S1E6</span> at <span class=\"ts\">5:45", call("GET", "/media", cookie=jar)[2])
+        status, headers, _ = call("POST", "/media/log", {"q": "s1e6 5:75"}, cookie=jar)
+        self.assertEqual((status, headers["location"]), (303, "/media?error=time&q=s1e6%205%3A75"))
+        body = call("GET", headers["location"], cookie=jar)[2]
+        self.assertIn(app.media.ERRORS["time"], body)
+        self.assertIn('value="s1e6 5:75"', body)
         self.assertEqual(call("POST", "/media/order", {"order": "Signed In\nOther"}, cookie=jar, sec_fetch_mode="cors")[0], 204)
         self.assertEqual(app.media.placed(app.TODO_DB), {"signed in": 0, "other": 1})
         self.assertIn('draggable="true" data-title="Signed In"', call("GET", "/media", cookie=jar)[2])
