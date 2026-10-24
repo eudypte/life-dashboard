@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -287,7 +287,8 @@ def presets_view(request: Request):
 
 # ---------- media ----------
 # media.csv (written outside the app) and the page's own log, read as one. +1, done, a tick or quick add append a row
-# to the page's log. Plain forms that answer 303 back to /media. Writes need the login, as on todo_app.
+# to the page's log; dragging a title saves the list's order. Plain forms that answer 303 back to /media.
+# Writes need the login, as on todo_app.
 
 media_app = APIRouter(dependencies=[Depends(require_login)])
 
@@ -300,7 +301,7 @@ def media_titles() -> list[dict]:
 def media_view(request: Request):
     ts = media_titles()
     return render(request, "media.html", "media", logged=bool(ts),
-                  watching=[t for t in ts if t["status"] == "watching"],
+                  watching=media.arrange([t for t in ts if t["status"] == "watching"], media.placed(TODO_DB)),
                   finished=[t for t in ts if t["status"] != "watching"],
                   seasons=media.seasons, is_movie=media.is_movie, seconds=data.seconds)
 
@@ -342,6 +343,14 @@ async def media_step(request: Request):
     else:
         return RedirectResponse("/media", status_code=303)
     return media_log(title=t["title"], season=season, episode=episode, status="watching")
+
+
+@media_app.post("/media/order")
+async def media_order(request: Request):
+    """Dragged (media.html): the titles in their new order, one per line."""
+    f = await form(request)
+    media.set_order(TODO_DB, [title for title in f.get("order", "").split("\n") if title])
+    return Response(status_code=204)
 
 
 app.include_router(media_app)

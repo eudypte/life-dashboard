@@ -24,6 +24,10 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS media_log (
   runtime  INTEGER,
   status   TEXT
 )"""
+ORDER_SCHEMA = """CREATE TABLE IF NOT EXISTS media_order (
+  key TEXT PRIMARY KEY,  -- the casefolded title
+  pos INTEGER NOT NULL   -- its place in the list, set by dragging
+)"""
 COLUMNS = ("date", "time", "title", "kind", "season", "episode", "episodes", "position", "runtime", "status")
 # quick add: "severance s2e8", "frieren e20", "dune 1:12:40", any of them with "done" or "drop" last
 STATUS_RE = re.compile(r"\s+(done|drop(?:ped)?)$", re.I)
@@ -33,6 +37,7 @@ WHERE_RE = re.compile(r"\s+(?:s(\d{1,3})\s*e(\d{1,4})|e(\d{1,4})|(\d{1,2}:\d{2}(
 def init(path: Path) -> None:
     with _db(path) as con:
         con.execute(SCHEMA)
+        con.execute(ORDER_SCHEMA)
 
 
 def log(path: Path, row: dict) -> None:
@@ -72,6 +77,25 @@ def titles(rows: list[dict]) -> list[dict]:
         t["status"] = r["status"] if r["status"] in data.MEDIA_STATUSES else t["status"]
         t["last"], t["at"] = r["date"], (r["date"], r["time"])
     return sorted(out.values(), key=lambda t: t["at"], reverse=True)
+
+
+def placed(path: Path) -> dict[str, int]:
+    with _db(path) as con:
+        return dict(con.execute("SELECT key, pos FROM media_order").fetchall())
+
+
+def set_order(path: Path, titles: list[str]) -> None:
+    """The list as dragged: every title shown takes its place."""
+    with _db(path) as con:
+        con.execute("DELETE FROM media_order")
+        con.executemany("INSERT OR IGNORE INTO media_order (key, pos) VALUES (?, ?)",
+                        [(title.casefold(), i) for i, title in enumerate(titles)])
+
+
+def arrange(ts: list[dict], order: dict[str, int]) -> list[dict]:
+    """Titles never dragged first, last watched first (as titles() gives them), then the dragged ones in their places."""
+    return ([t for t in ts if t["title"].casefold() not in order]
+            + sorted((t for t in ts if t["title"].casefold() in order), key=lambda t: order[t["title"].casefold()]))
 
 
 def is_movie(t: dict) -> bool:

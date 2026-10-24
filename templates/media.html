@@ -20,7 +20,7 @@
   {% endif %}
   <div class="shows">
   {% for t in watching %}
-    <div class="show">
+    <div class="show"{% if not read_only %} draggable="true" data-title="{{ t.title }}"{% endif %}>
       <div class="head">
         <span class="ti">{{ t.title }}{% if t.kind %} <span class="kind">· {{ t.kind }}</span>{% endif %}</span>
         <span class="when">{{ t.last | ago(today) }}
@@ -73,6 +73,52 @@
   </table>
   </div>
 </fieldset>
+{% endif %}
+
+{% if not read_only %}
+<script>
+  // Drag a title up or down the list, as on the todo Upcoming board: a dashed placeholder the size of the title
+  // shows the slot, between the titles nearest the pointer. The list keeps the order it shows. Mouse only.
+  const list = document.querySelector(".shows");
+  let dragged = null, was = "";
+  const ph = Object.assign(document.createElement("div"), { className: "placeholder" });
+  const titles = () => [...list.querySelectorAll(".show")].map(el => el.dataset.title).join("\n");
+  document.addEventListener("dragstart", e => {
+    dragged = e.target.closest?.(".show[draggable=true]");
+    if (!dragged) return;
+    was = titles();
+    ph.style.height = `${dragged.offsetHeight}px`;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragged.dataset.title);
+    requestAnimationFrame(() => dragged?.classList.add("dragging"));  // after the browser took the drag image
+  });
+  document.addEventListener("dragover", e => {
+    if (!dragged) return;
+    if (!e.target.closest?.(".shows")) return ph.remove();
+    const before = [...list.querySelectorAll(".show:not(.dragging)")]
+      .find(el => { const r = el.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (before) { if (ph.nextElementSibling !== before) before.before(ph); }
+    else if (ph.parentNode !== list || ph.nextElementSibling) list.append(ph);
+    e.preventDefault();
+  });
+  document.addEventListener("drop", e => {
+    const show = dragged;
+    dragged = null;
+    if (!show || !ph.parentNode) return ph.remove();
+    e.preventDefault();
+    ph.replaceWith(show);
+    show.classList.remove("dragging");
+    const order = titles();
+    if (order === was) return;  // dropped where it was
+    fetch("/media/order", { method: "POST", body: new URLSearchParams({ order }) })
+      .then(r => { if (!r.ok) location.reload(); }, () => location.reload());
+  });
+  document.addEventListener("dragend", () => {
+    dragged?.classList.remove("dragging");
+    dragged = null;
+    ph.remove();
+  });
+</script>
 {% endif %}
 {% endblock %}
 

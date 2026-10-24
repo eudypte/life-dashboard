@@ -65,6 +65,23 @@ class MediaTest(unittest.TestCase):
         later = media.titles(media.merged(data._parse_media(HEADER + "2026-10-23,10:00,Severance,,2,9,,,,\n"), log_rows))
         self.assertEqual(later[0]["episode"], 9)  # a later media.csv row wins over the page's
 
+    def test_dragged_titles_keep_their_place(self):
+        ts = titles("2026-10-11,,Bear,show,3,4,,,,\n2026-10-18,,Dune,movie,,,,1:00:00,,\n"
+                    "2026-10-21,,Frieren,anime,,19,,,,\n2026-10-22,,Severance,show,2,7,,,,\n")
+        ts = sorted(ts.values(), key=lambda t: t["at"], reverse=True)
+        self.assertEqual([t["title"] for t in media.arrange(ts, {})], ["Severance", "Frieren", "Dune", "Bear"])
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "todo.sqlite"
+            media.init(db)
+            media.set_order(db, ["Bear", "frieren", "Bear"])
+            self.assertEqual(media.placed(db), {"bear": 0, "frieren": 1})
+            # never dragged: on top, last watched first; dragged: in their places, whenever they were watched
+            self.assertEqual([t["title"] for t in media.arrange(ts, media.placed(db))], ["Severance", "Dune", "Bear", "Frieren"])
+            media.set_order(db, ["Dune", "Severance"])  # a new drag replaces the whole order
+            self.assertEqual(media.placed(db), {"dune": 0, "severance": 1})
+            media.init(db)  # a restart keeps it
+            self.assertEqual(media.placed(db), {"dune": 0, "severance": 1})
+
     def test_movie(self):
         ts = titles("2026-10-18,,Dune,movie,,,,1:12:40,166,\n2026-10-18,,Clip,,,,,0:04:00,,\n2026-10-18,,Show,show,1,1,,,,\n")
         self.assertEqual([media.is_movie(ts[k]) for k in ("Dune", "Clip", "Show")], [True, True, False])
