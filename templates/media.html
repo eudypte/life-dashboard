@@ -61,12 +61,12 @@
   <legend>[ Finished ]</legend>
   <div class="tbl-wrap">
   <table>
-    <thead><tr><th class="l">when</th><th class="l">title</th><th class="l hide-narrow">kind</th><th>at</th></tr></thead>
+    <thead><tr><th class="l">title</th><th class="l">when</th><th class="l hide-narrow">kind</th><th>at</th></tr></thead>
     <tbody>
     {% for t in finished %}
       <tr>
-        <td class="l dim">{{ t.last | ago(today) }}</td>
         <td class="l wrap">{{ t.title }}</td>
+        <td class="l dim">{{ t.last | ago(today) }}</td>
         <td class="l dim hide-narrow">{{ t.kind }}</td>
         <td>{% if t.status == "dropped" %}<span class="warn">dropped</span> {% endif %}<span class="dim">{{ where(t) }}</span></td>
       </tr>
