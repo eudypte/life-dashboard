@@ -140,6 +140,19 @@ class DataTest(unittest.TestCase):
         self.assertEqual((dune["started"], dune["finished"]), (dt.date(2026, 10, 1), dt.date(2026, 10, 4)))
         self.assertEqual((stoner["status"], stoner["finished"], stoner["page"]), ("dropped", None, 50))
 
+    def test_reading_start_page(self):
+        self.write("reading.csv", "date,time,book,author,page,pages,status\n"
+                   "2026-10-07,20:00,Middlemarch,George Eliot,145,880,start\n"
+                   "2026-10-07,22:00,Middlemarch,,168,,\n"   # 23 pages, not 168
+                   "2026-10-08,21:00,Middlemarch,,200,,reading\n"
+                   "2026-10-09,21:00,Emma,,60,474,start\n")  # a start row alone: nothing read
+        rows = data.reading(self.cfg)
+        self.assertEqual(data.pages_by_day(rows), {dt.date(2026, 10, 7): 23, dt.date(2026, 10, 8): 32})
+        middlemarch, emma = data.books(rows)
+        self.assertEqual((middlemarch["status"], middlemarch["page"], middlemarch["started"]), ("reading", 200, dt.date(2026, 10, 7)))
+        self.assertEqual((emma["status"], emma["page"], emma["pages"], emma["finished"]), ("reading", 60, 474, None))
+        self.assertEqual(data.streaks(data.pages_by_day(rows), dt.date(2026, 10, 9)), (2, 2))  # the start day is not a read day
+
     def test_reading_streaks(self):
         d = lambda n: dt.date(2026, 10, n)  # noqa: E731
         by_day = {d(1): 5, d(2): 5, d(3): 5, d(5): 0, d(7): 9, d(8): 3}

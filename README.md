@@ -9,6 +9,7 @@ It never writes to `NUTRITION_DIR`; the todo list at `/todo` and the media log a
 - Environment variables with the same names override it, and `LIFE_DASHBOARD_SETTINGS` points at a different settings file.
 - Daily targets live in `config.toml` in this folder and are re-read on change.
 - `TODO_DB` is the todo list's SQLite file, default `~/.local/share/life-dashboard/todo.sqlite`. The app refuses to start if it is inside `NUTRITION_DIR`.
+- `/reading` reads `reading.csv` in `NUTRITION_DIR`: `date,time,book,author,page,pages,status`, status `start`, `reading`, `done` or `dropped` (see `data.py`). A `start` row marks the page where logging that book began: it counts as no pages read, and later pages count from it.
 - `/media` reads `media.csv` in `NUTRITION_DIR`, appended outside the app like `reading.csv`: `date,time,title,kind,season,episode,episodes,position,runtime,status` (see `data.py`). An episode with a `position` (like `5:45`) is paused that far in; without one it is finished. Its +1, done, ticks and quick add go to a `media_log` table in `TODO_DB`, and the page shows both logs merged in time order.
 - `LIFE_DASHBOARD_TOKEN` is the login token for changing the todo list and the media log (see Login), set only in the environment, never in this repo.
 

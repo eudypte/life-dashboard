@@ -213,9 +213,10 @@ def to_unit(kg: float, unit: str) -> float:
 
 # ---------- reading ----------
 # reading.csv: one row per update, appended in time order; the page reached so far in
-# that book. Columns: date,time,book,author,page,pages,status (reading | done | dropped).
+# that book. Columns: date,time,book,author,page,pages,status (start | reading | done | dropped).
+# start: the page where logging that book began. It counts as no pages read; later rows count from it.
 
-STATUSES = ("reading", "done", "dropped")
+STATUSES = ("start", "reading", "done", "dropped")
 
 
 def _int(cell) -> int | None:
@@ -249,7 +250,8 @@ def reading(cfg: Config) -> list[dict]:
 
 def books(rows: list[dict]) -> list[dict]:
     """One entry per book (title, any case), in the order first logged. Later rows win;
-    a blank cell keeps the earlier value. A done row without a page counts as the last page."""
+    a blank cell keeps the earlier value. A done row without a page counts as the last page.
+    A start row leaves the book reading, at its page."""
     out: dict[str, dict] = {}
     for r in rows:
         b = out.setdefault(r["book"].casefold(), {
@@ -259,7 +261,7 @@ def books(rows: list[dict]) -> list[dict]:
         b["author"] = r["author"] or b["author"]
         b["pages"] = r["pages"] or b["pages"]
         b["page"] = r["page"] if r["page"] is not None else b["page"]
-        b["status"] = r["status"] if r["status"] in STATUSES else b["status"]
+        b["status"] = "reading" if r["status"] == "start" else r["status"] if r["status"] in STATUSES else b["status"]
         b["finished"] = r["date"] if b["status"] == "done" else None
         if b["status"] == "done" and r["page"] is None:
             b["page"] = b["pages"] or b["page"]
@@ -268,7 +270,8 @@ def books(rows: list[dict]) -> list[dict]:
 
 def pages_by_day(rows: list[dict]) -> dict[dt.date, int]:
     """Pages read per date: how far each book moved past its furthest page before.
-    A book's first row counts from page 0; going back a page never counts."""
+    A book's first row counts from page 0, unless it is a start row: that sets the furthest page and counts
+    nothing. Going back a page never counts."""
     furthest: dict[str, int] = {}
     length: dict[str, int] = {}
     out: dict[dt.date, int] = {}
@@ -277,6 +280,9 @@ def pages_by_day(rows: list[dict]) -> dict[dt.date, int]:
         length[key] = r["pages"] or length.get(key)
         page = r["page"] if r["page"] is not None else length[key] if r["status"] == "done" else None
         if page is None:
+            continue
+        if r["status"] == "start":
+            furthest[key] = page
             continue
         gain = page - furthest.get(key, 0)
         if gain > 0:
