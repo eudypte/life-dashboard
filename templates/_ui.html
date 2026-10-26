@@ -87,7 +87,8 @@
 </div>
 {%- else %}
 <div class="t{{ ' done' if g.done }}" id="t{{ t.id }}"
-  {%- if g.board and not read_only %} draggable="true"{% endif %}>
+  {%- if g.board and not read_only %} draggable="true"{% endif %}
+  {%- if not read_only %} data-pri="{{ t.priority }}" data-proj="{{ t.project or '' }}" data-due="{{ t.due or '' }}"{% endif %}>
   {%- if read_only %}{# signed out: the same rows, nothing to press #}
   <span class="box{{ pri }}">{{ "[x]" if g.done else "[ ]" }}</span>
   <span class="name">{{ t.title }}</span>

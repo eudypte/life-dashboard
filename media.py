@@ -101,6 +101,14 @@ def set_order(path: Path, titles: list[str]) -> None:
                         [(title.casefold(), i) for i, title in enumerate(titles)])
 
 
+def move(order: list[str], title: str, to: str) -> list[str]:
+    """The list after moving `title` to the top, up one, down one or to the bottom (the right-click menu)."""
+    i = order.index(title)
+    rest = order[:i] + order[i + 1:]
+    j = {"top": 0, "up": max(i - 1, 0), "down": min(i + 1, len(rest)), "bottom": len(rest)}[to]
+    return rest[:j] + [title] + rest[j:]
+
+
 def arrange(ts: list[dict], order: dict[str, int]) -> list[dict]:
     """Titles never dragged first, last watched first (as titles() gives them), then the dragged ones in their places."""
     return ([t for t in ts if t["title"].casefold() not in order]

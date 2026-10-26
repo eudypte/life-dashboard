@@ -85,6 +85,12 @@ class MediaTest(unittest.TestCase):
             media.init(db)  # a restart keeps it
             self.assertEqual(media.placed(db), {"dune": 0, "severance": 1})
 
+    def test_move(self):
+        order = ["A", "B", "C", "D"]
+        self.assertEqual([media.move(order, "C", to) for to in ("top", "up", "down", "bottom")],
+                         [["C", "A", "B", "D"], ["A", "C", "B", "D"], ["A", "B", "D", "C"], ["A", "B", "D", "C"]])
+        self.assertEqual((media.move(order, "A", "up"), media.move(order, "D", "down")), (order, order))  # already at the end
+
     def test_movie(self):
         ts = titles("2026-10-18,,Dune,movie,,,,1:12:40,166,\n2026-10-18,,Clip,,,,,0:04:00,,\n2026-10-18,,Show,show,1,1,,,,\n")
         self.assertEqual([media.is_movie(ts[k]) for k in ("Dune", "Clip", "Show")], [True, True, False])
@@ -167,10 +173,33 @@ class MediaPageTest(unittest.TestCase):
         self.assertNotIn("5:45", self.finished_row("Menu Dropped"))  # no "at" column: finished means the whole title
         self.assertNotIn("<th>at</th>", body)
 
+    def test_move_watch_again_and_set_where(self):
+        for q in ("Menu One s1e1", "Menu Two e4", "Menu Film 0:30:00"):
+            self.call("POST", "/media/log", {"q": q}, cookie=self.jar)
+        order = lambda: [t["title"] for t in self.app.media.arrange(  # noqa: E731
+            [t for t in self.app.media_titles() if t["status"] == "watching"], self.app.media.placed(self.app.TODO_DB))]
+        self.app.media.set_order(self.app.TODO_DB, ["Menu Film", "Menu Two", "Menu One"])  # logged in the same second: set it
+        self.assertEqual(self.call("POST", "/media/move", {"title": "Menu One", "to": "top"}, cookie=self.jar)[1]["location"], "/media")
+        self.call("POST", "/media/move", {"title": "Menu Two", "to": "up"}, cookie=self.jar)
+        self.assertEqual(order(), ["Menu One", "Menu Two", "Menu Film"])
+        self.assertEqual(self.call("POST", "/media/move", {"title": "nobody", "to": "top"}, cookie=self.jar)[0], 404)
+        self.call("POST", "/media/step", {"title": "Menu Two", "do": "drop"}, cookie=self.jar)
+        self.assertNotIn("Menu Two", order())
+        self.call("POST", "/media/step", {"title": "Menu Two", "do": "again"}, cookie=self.jar)
+        t = next(t for t in self.app.media_titles() if t["title"] == "Menu Two")
+        self.assertEqual((t["status"], t["episode"]), ("watching", 4))  # back where it stopped
+        body = self.call("GET", "/media", cookie=self.jar)[2]
+        for attrs in ('data-title="Menu One" data-next="s1e"', 'data-title="Menu Two" data-next="e"', 'data-title="Menu Film" data-next=""'):
+            self.assertIn(attrs, body)  # "set where I am" fills the box with the title and these
+        self.assertIn('value="again">watch again</button>', body)
+        self.assertNotIn("touchstart", body)  # desktop only: no long-press menu
+
     def test_signed_out_cannot_drop(self):
         self.call("POST", "/media/log", {"q": "Kept s1e1"}, cookie=self.jar)
         self.assertNotIn('id="ctx"', self.call("GET", "/media")[2])
-        self.assertEqual(self.call("POST", "/media/step", {"title": "Kept", "do": "drop"}, sec_fetch_mode="cors")[0], 403)
+        for path, f in (("/media/step", {"title": "Kept", "do": "drop"}), ("/media/step", {"title": "Kept", "do": "again"}),
+                        ("/media/move", {"title": "Kept", "to": "top"})):
+            self.assertEqual(self.call("POST", path, f, sec_fetch_mode="cors")[0], 403, f)
         self.assertEqual(self.call("POST", "/media/step", {"title": "Kept", "do": "drop"})[0], 303)  # a plain form: to the login box
         self.assertEqual(next(t for t in self.app.media_titles() if t["title"] == "Kept")["status"], "watching")
 

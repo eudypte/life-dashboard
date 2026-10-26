@@ -184,6 +184,18 @@ def move(path: Path, task_id: int, due: dt.date | None) -> None:
                         " day_order = NULL WHERE id = ?", (task_id,))
 
 
+def set_priority(path: Path, task_id: int, priority: int) -> None:
+    with _db(path) as con:
+        con.execute("UPDATE task SET priority = ? WHERE id = ?", (priority, task_id))
+
+
+def set_project(path: Path, task_id: int, project: str | None) -> None:
+    """None moves the task to the inbox."""
+    with _db(path) as con:
+        _keep_project(con, project)
+        con.execute("UPDATE task SET project = ? WHERE id = ?", (project, task_id))
+
+
 def drop(path: Path, task_id: int, due: dt.date, order: list[int]) -> None:
     """Dragged on the Upcoming board onto `due`, in the slot `order` gives: that day's task ids, top to bottom.
     The day keeps that order, regardless of time and priority; tasks added or moved there later go below it."""

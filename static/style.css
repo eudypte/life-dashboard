@@ -271,7 +271,11 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
 .ctx .item.warn { color: var(--warn); }
 .ctx .item:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ctx form { display: none; }
-.ctx .ctx-drop { display: block; }  /* the media page's menu: one item, no modes */
+.ctx-sep { border-top: 1px dashed var(--bg2); margin: 4px 0; }
+.ctx .item[hidden] { display: none; }
+/* the media page's menu: the items of a title in Watching, or of a row in Finished */
+.ctx:not([data-kind="watching"]) .for-watching, .ctx:not([data-kind="finished"]) .for-finished { display: none; }
+.ctx[data-kind="watching"] form.for-watching, .ctx[data-kind="finished"] form.for-finished { display: block; }
 .ctx[data-mode="rename"] .ctx-main, .ctx[data-mode="color"] .ctx-main, .ctx[data-mode="delete"] .ctx-main { display: none; }
 .ctx:not([data-kind="label"]) .for-label { display: none; }
 .ctx[data-mode="color"] .ctx-color { display: flex; gap: 6px; padding: 2px 0; }
@@ -283,6 +287,21 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
 .ctx-rename input:focus { outline: 0; border-color: var(--accent); }
 .ctx-delete p { margin: 0 0 6px; white-space: normal; }
 .ctx-delete .btn { background: var(--warn); }
+/* the task menu: date, priority, project, delete */
+.ctx-task { display: none; }
+.ctx[data-kind="task"] .ctx-main { display: none; }
+.ctx[data-kind="task"][data-mode=""] .ctx-task { display: block; }
+.ctx[data-kind="task"][data-mode=""] .ctx-task form { display: block; }
+.ctx[data-kind="task"][data-mode=""] .ctx-task .ctx-priority { display: flex; gap: 2ch; }
+.ctx-due .item { display: flex; justify-content: space-between; gap: 3ch; width: 100%; }
+.ctx .item.cur, .ctx .item[aria-current] { color: var(--accent); --lc: var(--accent); }
+.ctx .item.p1 { color: var(--warn); --lc: var(--warn); } .ctx .item.p2 { color: var(--f); --lc: var(--f); } .ctx .item.p3 { color: var(--p); --lc: var(--p); }
+.ctx .item.p4 { color: var(--dim); --lc: var(--fg); }
+.ctx-priority .item[aria-current] { text-decoration: underline; text-underline-offset: 3px; }
+.ctx[data-mode="project"] .ctx-project { display: block; max-height: 16em; overflow-y: auto; }
+.ctx[data-mode="remove"] .ctx-remove { display: block; }
+.ctx-remove p { margin: 0 0 6px; white-space: normal; }
+.ctx-remove .btn { background: var(--warn); }
 
 /* the edit form in a board card is narrow: one field per line, as on phones */
 .board .edit .fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; }
@@ -379,7 +398,7 @@ button.tk { cursor: pointer; }
 .link, .js .datefield { --lc: var(--accent); }
 .dayadd .under .link, .t .box { --lc: var(--hi); }
 .btn, .step { --lc: var(--accent); }
-details.del summary, details.del .btn, .ctx-delete .btn { --lc: var(--warn); }
+details.del summary, details.del .btn, .ctx-delete .btn, .ctx-remove .btn { --lc: var(--warn); }
 .t .box.p1 { --lc: var(--warn); } .t .box.p2 { --lc: var(--f); } .t .box.p3 { --lc: var(--p); } .t.done .box { --lc: var(--kcal); }
 :root:not([data-hover="current"]) :is(.link, details.del summary, .t .box, .js .datefield):hover { color: var(--bg); background: var(--lc); text-decoration: none; }
 :root:not([data-hover="current"]) .btn:hover { color: var(--lc); background: var(--bg); box-shadow: inset 0 0 0 1px var(--lc); }

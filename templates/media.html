@@ -15,7 +15,7 @@
   {% endif %}
   <div class="shows">
   {% for t in watching %}
-    <div class="show"{% if not read_only %} draggable="true" data-title="{{ t.title }}"{% endif %}>
+    <div class="show"{% if not read_only %} draggable="true" data-title="{{ t.title }}" data-next="{{ '' if is_movie(t) else 's%de' % t.season if t.season is not none else 'e' }}"{% endif %}>
       <div class="head">
         <span class="ti">{{ t.title }}{% if t.kind %} <span class="kind">· {{ t.kind }}</span>{% endif %}
           {%- if paused(t) %} <span class="kind">· <span class="ep">{{ "S" ~ t.season if t.season is not none }}E{{ t.episode }}</span> at <span class="ts">{{ t.position }}</span></span>{% endif %}</span>
@@ -58,7 +58,7 @@
     <thead><tr><th class="l">title</th><th class="l">when</th><th class="l hide-narrow">kind</th></tr></thead>
     <tbody>
     {% for t in finished %}
-      <tr>
+      <tr{% if not read_only %} data-title="{{ t.title }}"{% endif %}>
         <td class="l wrap">{{ t.title }}{% if t.status == "dropped" %} <span class="warn">dropped</span>{% endif %}</td>
         <td class="l dim">{{ t.last | ago(today) }}</td>
         <td class="l dim hide-narrow">{{ t.kind }}</td>
@@ -71,11 +71,18 @@
 {% endif %}
 
 {% if not read_only %}
-{# right-click (long-press) menu for a title in the list; the script below fills it in #}
+{# right-click menu for a title in Watching or a row in Finished; the script below fills it in #}
 <div class="ctx" id="ctx" role="menu" hidden>
   <div class="ctx-head"></div>
-  <form class="ctx-drop" method="post" action="/media/step"><input type="hidden" name="title">
+  <form class="for-watching" method="post" action="/media/move"><input type="hidden" name="title">
+    {%- for to in ("top", "up", "down", "bottom") %}<button class="item" name="to" value="{{ to }}">move {{ "to " if to in ("top", "bottom") }}{{ to }}</button>{% endfor %}</form>
+  <div class="ctx-sep for-watching"></div>
+  <button type="button" class="item for-watching" data-act="where">set where I am…</button>
+  <div class="ctx-sep for-watching"></div>
+  <form class="for-watching" method="post" action="/media/step"><input type="hidden" name="title">
     <button class="item warn" name="do" value="drop">drop</button></form>
+  <form class="for-finished" method="post" action="/media/step"><input type="hidden" name="title">
+    <button class="item" name="do" value="again">watch again</button></form>
 </div>
 <script>
   // Drag a title up or down the list, as on the todo Upcoming board: a dashed placeholder the size of the title
@@ -120,35 +127,35 @@
     ph.remove();
   });
 
-  // A title: right-click it for drop, or long-press it on a touch screen (the todo page's project menu).
-  // Dropping logs a dropped row; the title moves to Finished.
-  const ctx = document.getElementById("ctx");
-  let press = null;
-  function openCtx(show, x, y) {
-    ctx.querySelector(".ctx-head").textContent = show.dataset.title;
-    ctx.querySelector("[name=title]").value = show.dataset.title;
+  // Right-click a title in Watching (move, set where I am, drop) or a row in Finished (watch again).
+  // Desktop only: on touch screens the browser keeps its own long-press, and "title drop" in the box still drops.
+  const ctx = document.getElementById("ctx"), q = document.querySelector(".add [name=q]");
+  function openCtx(el, kind, x, y) {
+    const title = el.dataset.title, shows = [...document.querySelectorAll(".show[data-title]")], i = shows.indexOf(el);
+    ctx.querySelector(".ctx-head").textContent = title;
+    for (const input of ctx.querySelectorAll("[name=title]")) input.value = title;
+    for (const b of ctx.querySelectorAll("[name=to]")) b.hidden = b.value === "top" || b.value === "up" ? i === 0 : i === shows.length - 1;
+    ctx.dataset.kind = kind;
     ctx.hidden = false;
     ctx.style.left = `${Math.max(8, Math.min(x, innerWidth - ctx.offsetWidth - 8))}px`;
     ctx.style.top = `${Math.max(8, Math.min(y, innerHeight - ctx.offsetHeight - 8))}px`;
   }
   document.addEventListener("contextmenu", e => {
-    const show = e.target.closest(".show[data-title]");
-    if (!show) return;
+    if (matchMedia("(pointer: coarse)").matches) return;
+    const show = e.target.closest(".show[data-title]"), row = e.target.closest("tr[data-title]");
+    if (!show && !row) return;
     e.preventDefault();
-    openCtx(show, e.clientX, e.clientY);
+    openCtx(show || row, show ? "watching" : "finished", e.clientX, e.clientY);
   });
-  document.addEventListener("touchstart", e => {
-    const show = e.target.closest?.(".show[data-title] .ti");
-    if (!show) return;
-    const { clientX: x, clientY: y } = e.touches[0];
-    press = setTimeout(() => { press = "open"; openCtx(show.closest(".show"), x, y); }, 500);
-  }, { passive: true });
-  for (const type of ["touchend", "touchmove", "touchcancel"])
-    document.addEventListener(type, () => { if (press !== "open") { clearTimeout(press); press = null; } }, { passive: true });
-  document.addEventListener("click", e => {
-    if (press === "open") { e.preventDefault(); press = null; return; }  // the click that ends a long-press
-    if (!ctx.hidden && !ctx.contains(e.target)) ctx.hidden = true;
+  ctx.addEventListener("click", e => {
+    if (!e.target.closest("[data-act=where]")) return;
+    const show = document.querySelector(`.show[data-title="${CSS.escape(ctx.querySelector("[name=title]").value)}"]`);
+    ctx.hidden = true;
+    q.value = `${show.dataset.title} ${show.dataset.next}`;
+    q.focus();
+    q.setSelectionRange(q.value.length, q.value.length);
   });
+  document.addEventListener("click", e => { if (!ctx.hidden && !ctx.contains(e.target)) ctx.hidden = true; });
   document.addEventListener("keydown", e => { if (e.key === "Escape") ctx.hidden = true; });
 </script>
 {% endif %}

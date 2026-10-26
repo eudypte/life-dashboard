@@ -82,7 +82,8 @@ class LoginTest(unittest.TestCase):
         app.media.log(app.TODO_DB, {"date": today, "time": "09:00:00", "title": "changed", "season": 1, "episode": 1})
         before = (app.todo.tasks(app.TODO_DB, today), app.todo.projects(app.TODO_DB), app.todo.label_colors(app.TODO_DB),
                   app.media.page_rows(app.TODO_DB), app.media.placed(app.TODO_DB))
-        f = {"q": "new task", "next": "/todo", "title": "changed", "name": "y", "due": "today", "color": "p", "do": "next", "order": "changed"}
+        f = {"q": "new task", "next": "/todo", "title": "changed", "name": "y", "due": "today", "color": "p", "do": "next", "order": "changed",
+             "priority": "1", "project": "elsewhere", "to": "top"}
         for path in writes:
             path = path.replace("{task_id}", str(task)).replace("{name}", "home" if "project" in path else "deep")
             self.assertEqual(call("POST", path, f, sec_fetch_mode="cors")[0], 403, path)  # a fetch from todo.html
@@ -127,6 +128,14 @@ class LoginTest(unittest.TestCase):
         self.assertNotIn('action="/logout"', call("GET", "/calories")[2])
         self.assertEqual(call("GET", "/todo/parse?q=x", cookie=jar)[0], 200)
         self.assertEqual(call("POST", "/todo/add", {"q": "x", "next": "/todo"}, cookie=jar)[0], 303)
+        menu = app.todo.add(app.TODO_DB, app.todo.parse("menu task p1", app.data.logical_today(app.CFG)), app.dt.datetime.now())
+        self.assertIn(f'id="t{menu}" data-pri="1" data-proj="" data-due=""', call("GET", "/todo/inbox", cookie=jar)[2])
+        self.assertIn('data-task-verb="priority"', call("GET", "/todo/inbox", cookie=jar)[2])
+        for verb, f in (("priority", {"priority": "3"}), ("project", {"project": "menu-proj"}), ("due", {"due": "tomorrow"})):
+            self.assertEqual(call("POST", f"/todo/{menu}/{verb}", {**f, "next": "/todo/inbox"}, cookie=jar)[1]["location"],
+                             f"/todo/inbox#t{menu}")
+        t = app.todo.get(app.TODO_DB, menu)
+        self.assertEqual((t["priority"], t["project"], t["due"]), (3, "menu-proj", app.data.logical_today(app.CFG) + app.dt.timedelta(days=1)))
         self.assertEqual(call("GET", "/login?next=/todo/inbox", cookie=jar)[1]["location"], "/todo/inbox")
         self.assertIn('action="/media/log"', call("GET", "/media", cookie=jar)[2])
         self.assertEqual(call("POST", "/media/log", {"q": "Signed In s1e1"}, cookie=jar)[1]["location"], "/media")

@@ -75,7 +75,7 @@
   {% endif %}
 </fieldset>
 {% if not read_only %}{# signed out: read-only, no menu, no forms and no script #}
-{# right-click (long-press) menu for a project or a label; todo.html's script fills it in #}
+{# right-click (long-press) menu for a project or a label, and right-click menu for a task; todo.html's script fills it in #}
 <div class="ctx" id="ctx" role="menu" hidden>
   <div class="ctx-head"></div>
   <div class="ctx-main">
@@ -89,6 +89,21 @@
     {%- for c in palette %}<button class="swatch lc-{{ c }}" name="color" value="{{ c }}" aria-label="color {{ loop.index }}"></button>{% endfor %}</form>
   <form class="ctx-delete" method="post" data-verb="delete"><input type="hidden" name="next" value="{{ here }}">
     <p class="ctx-text"></p><button class="btn">yes, delete</button></form>
+  <div class="ctx-task">
+    <form class="ctx-due" method="post" data-task-verb="due"><input type="hidden" name="next" value="{{ here }}">
+      {%- for value, label, d in date_options %}<button class="item" name="due" value="{{ value }}" data-date="{{ d or '' }}">{{ label }}{% if d %}<span class="dim">{{ d.strftime("%a %d") }}</span>{% endif %}</button>{% endfor %}</form>
+    <div class="ctx-sep"></div>
+    <form class="ctx-priority" method="post" data-task-verb="priority"><input type="hidden" name="next" value="{{ here }}">
+      {%- for p in range(1, 5) %}<button class="item p{{ p }}" name="priority" value="{{ p }}">{{ "p" ~ p if p < 4 else "none" }}</button>{% endfor %}</form>
+    <button type="button" class="item" data-mode="project">move to project…</button>
+    <div class="ctx-sep"></div>
+    <button type="button" class="item warn" data-mode="remove">delete</button>
+  </div>
+  <form class="ctx-project" method="post" data-task-verb="project"><input type="hidden" name="next" value="{{ here }}">
+    <button class="item" name="project" value="">inbox</button>
+    {%- for name, n in counts.projects %}<button class="item" name="project" value="{{ name }}"># {{ name }}</button>{% endfor %}</form>
+  <form class="ctx-remove" method="post" data-task-verb="delete"><input type="hidden" name="next" value="{{ here }}">
+    <p class="ctx-task-text"></p><button class="btn">yes, delete</button></form>
 </div>
 <datalist id="projects">{% for name, n in counts.projects %}<option value="{{ name }}">{% endfor %}</datalist>
 <datalist id="labels">{% for name, n, color in counts.labels %}<option value="{{ name }}">{% endfor %}</datalist>
@@ -221,18 +236,40 @@
     ctx.style.top = `${y}px`;
     fit();
   }
+  // A task: right-click it for its date, priority, project or delete. Desktop only: no long-press for tasks,
+  // so a touch screen keeps the browser's own menu (and the edit form has every field).
+  function openTask(row, x, y) {
+    const id = row.id.slice(1), title = row.querySelector(".name").textContent;
+    for (const f of ctx.querySelectorAll("form[data-task-verb]")) f.action = `/todo/${id}/${f.dataset.taskVerb}`;
+    ctx.querySelector(".ctx-head").textContent = title;
+    ctx.querySelector(".ctx-task-text").textContent = `Delete "${title}"?`;
+    for (const b of ctx.querySelectorAll("[name=due]")) b.classList.toggle("cur", b.dataset.date === row.dataset.due);
+    for (const b of ctx.querySelectorAll("[name=priority]")) b.toggleAttribute("aria-current", b.value === row.dataset.pri);
+    for (const b of ctx.querySelectorAll("[name=project]")) b.toggleAttribute("aria-current", b.value === row.dataset.proj);
+    ctx.dataset.kind = "task";
+    ctx.dataset.mode = "";
+    ctx.hidden = false;
+    ctx.style.left = `${x}px`;
+    ctx.style.top = `${y}px`;
+    fit();
+  }
   document.addEventListener("contextmenu", e => {
-    const link = e.target.closest(MARKED);
-    if (!link) return;
-    e.preventDefault();
-    openCtx(link, e.clientX, e.clientY);
+    const link = e.target.closest(MARKED), row = e.target.closest(".tasks .t[data-pri]:not(.editing)");
+    if (link) {
+      e.preventDefault();
+      openCtx(link, e.clientX, e.clientY);
+    } else if (row && !matchMedia("(pointer: coarse)").matches) {
+      e.preventDefault();
+      openTask(row, e.clientX, e.clientY);
+    }
   });
   ctx.addEventListener("click", e => {
     const mode = e.target.closest("[data-mode]")?.dataset.mode;
     if (!mode) return;
     ctx.dataset.mode = mode;
     fit();
-    const target = { rename: "[name=name]", color: ".swatch[aria-current]", delete: ".ctx-delete .btn" }[mode];
+    const target = { rename: "[name=name]", color: ".swatch[aria-current]", delete: ".ctx-delete .btn",
+                     project: ".ctx-project [aria-current]", remove: ".ctx-remove .btn" }[mode];
     (ctx.querySelector(target) || ctx.querySelector(".swatch")).focus();
   });
   document.addEventListener("touchstart", e => {

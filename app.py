@@ -330,14 +330,14 @@ async def media_add(request: Request):
 
 @media_app.post("/media/step")
 async def media_step(request: Request):
-    """+1, done, drop (the right-click menu), or a tick (at=season:episode, season blank when the title has none)
-    on a logged title."""
+    """+1, done, drop and again (the right-click menu: back to watching), or a tick (at=season:episode, season
+    blank when the title has none) on a logged title."""
     f = await form(request)
     t = next((t for t in media_titles() if t["title"] == f.get("title")), None)
     if not t:
         raise HTTPException(404)
-    if f.get("do") in ("done", "drop"):
-        return media_log(title=t["title"], status="done" if f["do"] == "done" else "dropped")
+    if f.get("do") in ("done", "drop", "again"):
+        return media_log(title=t["title"], status={"done": "done", "drop": "dropped", "again": "watching"}[f["do"]])
     if f.get("do") == "next":
         season, episode = media.step(t)
     elif m := re.fullmatch(r"(\d*):(\d+)", f.get("at", "")):
@@ -345,6 +345,18 @@ async def media_step(request: Request):
     else:
         return RedirectResponse("/media", status_code=303)
     return media_log(title=t["title"], season=season, episode=episode, status="watching")
+
+
+@media_app.post("/media/move")
+async def media_move(request: Request):
+    """The right-click menu: a title in Watching to the top, up, down or to the bottom of the list as shown."""
+    f = await form(request)
+    order = [t["title"] for t in media.arrange([t for t in media_titles() if t["status"] == "watching"], media.placed(TODO_DB))]
+    if f.get("title") not in order:
+        raise HTTPException(404)
+    if f.get("to") in ("top", "up", "down", "bottom"):
+        media.set_order(TODO_DB, media.move(order, f["title"], f["to"]))
+    return RedirectResponse("/media", status_code=303)
 
 
 @media_app.post("/media/order")
@@ -477,6 +489,23 @@ async def todo_due(request: Request, task_id: int):
         todo.drop(TODO_DB, task_id, due, [int(i) for i in f.get("order", "").split(",") if i.isdigit()])
     elif due:
         todo.move(TODO_DB, task_id, due)
+    return back(f, task_id=task_id)
+
+
+@todo_app.post("/todo/{task_id}/priority")
+async def todo_priority(request: Request, task_id: int):
+    """The task menu: p1 to p4 (none)."""
+    f = await form(request)
+    if f.get("priority") in ("1", "2", "3", "4"):
+        todo.set_priority(TODO_DB, task_id, int(f["priority"]))
+    return back(f, task_id=task_id)
+
+
+@todo_app.post("/todo/{task_id}/project")
+async def todo_set_project(request: Request, task_id: int):
+    """The task menu: one of the projects, or blank for the inbox."""
+    f = await form(request)
+    todo.set_project(TODO_DB, task_id, todo.project_name(f.get("project", "")))
     return back(f, task_id=task_id)
 
 

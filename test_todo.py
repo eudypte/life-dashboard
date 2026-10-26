@@ -234,6 +234,16 @@ class StoreTest(unittest.TestCase):
         todo.delete(self.db, a)
         self.assertIsNone(todo.get(self.db, a))
 
+    def test_menu_priority_and_project(self):
+        a = self.add("x p1 #home @deep tomorrow")
+        todo.set_priority(self.db, a, 4)
+        todo.set_project(self.db, a, "work")
+        t = todo.get(self.db, a)
+        self.assertEqual((t["priority"], t["project"], t["due"], [n for n, _ in t["labels"]]), (4, "work", d(10, 21), ["deep"]))
+        self.assertIn("work", todo.projects(self.db))  # a project the menu moved a task to exists from then on
+        todo.set_project(self.db, a, None)
+        self.assertIsNone(todo.get(self.db, a)["project"])  # inbox
+
     def test_never_inside_nutrition_dir(self):
         old = os.environ.get("TODO_DB")
         try:
