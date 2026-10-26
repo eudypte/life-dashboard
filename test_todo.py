@@ -92,10 +92,24 @@ class ParseTest(unittest.TestCase):
 class RepeatTest(unittest.TestCase):
     def test_next_due(self):
         cases = [("every day", T, d(10, 21)), ("every week", T, d(10, 27)),
-                 ("every week", d(10, 10), d(10, 24)),  # overdue: skip to the first date after today
+                 ("every week", d(10, 10), d(10, 24)),  # overdue: the first occurrence on or after today
                  ("every month", d(10, 31), d(11, 30)), ("every year", d(2, 29, 2024), d(2, 28, 2027)),
                  ("every weekday", d(10, 23), d(10, 26)), ("every 2 weeks", T, d(11, 3)),
                  ("every 3 days", None, d(10, 23))]
+        for rule, due, nxt in cases:
+            with self.subTest(rule=rule, due=due):
+                self.assertEqual(todo.next_due(rule, due, T), nxt)
+
+    def test_overdue_repeat_lands_on_today_never_past_it(self):
+        """Ticking an overdue repeat completes the missed occurrence: the next one is the first on or after
+        today, so a missed day never takes today's place (T is Tue Oct 20)."""
+        cases = [("every day", d(10, 19), T), ("every day", d(10, 17), T),  # missed 1 day, missed 3 days
+                 ("every day", T, d(10, 21)), ("every day", d(10, 22), d(10, 23)),  # on time, ticked early
+                 ("every week", d(10, 13), T), ("every week", d(10, 6), T),  # its weekday is today
+                 ("every week", d(10, 15), d(10, 22)),  # the next Thursday
+                 ("every 3 days", d(10, 14), T), ("every 3 days", d(10, 15), d(10, 21)),
+                 ("every 2 weeks", d(10, 6), T), ("every month", d(9, 20), T), ("every month", d(9, 25), d(10, 25)),
+                 ("every year", d(10, 20, 2025), T), ("every weekday", d(10, 16), T)]
         for rule, due, nxt in cases:
             with self.subTest(rule=rule, due=due):
                 self.assertEqual(todo.next_due(rule, due, T), nxt)
@@ -129,6 +143,19 @@ class StoreTest(unittest.TestCase):
         todo.untick(self.db, a)
         self.assertEqual({t["id"]: (t["due"], t["done_on"]) for t in todo.tasks(self.db, T)},
                          {a: (None, None), r: (T, None)})
+
+    def test_ticking_an_overdue_daily_task_twice(self):
+        r = todo.add(self.db, todo.parse("stretch every day", T), dt.datetime(2026, 10, 18, 9))
+        todo.move(self.db, r, d(10, 19))  # missed yesterday
+        todo.tick(self.db, r, T)
+        t = todo.get(self.db, r)
+        self.assertEqual((t["due"], t["prev_due"], t["done_on"]), (T, d(10, 19), T))
+        g = {x["label"]: [t["id"] for t in x["rows"]] for x in todo.groups(todo.tasks(self.db, T), T, "today")}
+        self.assertEqual((g["overdue"], g["today"]), ([], [r]))  # still to do today
+        todo.tick(self.db, r, T)
+        self.assertEqual(todo.get(self.db, r)["due"], d(10, 21))
+        todo.untick(self.db, r)
+        self.assertEqual(todo.get(self.db, r)["due"], T)
 
     def test_move_keeps_time_and_repeat(self):
         r = self.add("standup 9am every weekday")

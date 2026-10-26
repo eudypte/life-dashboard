@@ -326,9 +326,11 @@ def _step(rule: str, d: dt.date) -> dt.date:
 
 
 def next_due(rule: str, due: dt.date | None, today: dt.date) -> dt.date:
-    """Step from the due date until past today, so a late tick never leaves missed copies behind."""
+    """The occurrence after the ticked one (`due`), skipping missed ones up to today but never today itself:
+    a task ticked late lands on today if that is one of its days, else on its next day. Ticked on time or
+    early, it is simply the next occurrence."""
     d = _step(rule, due or today)
-    while d <= today:
+    while d < today:
         d = _step(rule, d)
     return d
 
