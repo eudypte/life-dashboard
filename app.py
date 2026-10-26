@@ -330,13 +330,14 @@ async def media_add(request: Request):
 
 @media_app.post("/media/step")
 async def media_step(request: Request):
-    """+1, done, or a tick (at=season:episode, season blank when the title has none) on a logged title."""
+    """+1, done, drop (the right-click menu), or a tick (at=season:episode, season blank when the title has none)
+    on a logged title."""
     f = await form(request)
     t = next((t for t in media_titles() if t["title"] == f.get("title")), None)
     if not t:
         raise HTTPException(404)
-    if f.get("do") == "done":
-        return media_log(title=t["title"], status="done")
+    if f.get("do") in ("done", "drop"):
+        return media_log(title=t["title"], status="done" if f["do"] == "done" else "dropped")
     if f.get("do") == "next":
         season, episode = media.step(t)
     elif m := re.fullmatch(r"(\d*):(\d+)", f.get("at", "")):

@@ -2,12 +2,6 @@
 {% block title %}Media · Life Dashboard{% endblock %}
 {% block refresh %}{% endblock %}{# a refresh would wipe a half-typed log line #}
 
-{% macro where(t) -%}
-  {%- if is_movie(t) %}{{ t.position or "movie" }}
-  {%- elif t.episode is not none %}{{ "S" ~ t.season ~ " " if t.season is not none }}E{{ t.episode }}{{ " at " ~ t.position if paused(t) }}
-  {%- elif t.season is not none %}S{{ t.season }}{% endif -%}
-{%- endmacro %}
-
 {% block main %}
 <fieldset class="span2">
   <legend>[ Watching ]</legend>
@@ -61,14 +55,13 @@
   <legend>[ Finished ]</legend>
   <div class="tbl-wrap">
   <table>
-    <thead><tr><th class="l">title</th><th class="l">when</th><th class="l hide-narrow">kind</th><th>at</th></tr></thead>
+    <thead><tr><th class="l">title</th><th class="l">when</th><th class="l hide-narrow">kind</th></tr></thead>
     <tbody>
     {% for t in finished %}
       <tr>
-        <td class="l wrap">{{ t.title }}</td>
+        <td class="l wrap">{{ t.title }}{% if t.status == "dropped" %} <span class="warn">dropped</span>{% endif %}</td>
         <td class="l dim">{{ t.last | ago(today) }}</td>
         <td class="l dim hide-narrow">{{ t.kind }}</td>
-        <td>{% if t.status == "dropped" %}<span class="warn">dropped</span> {% endif %}<span class="dim">{{ where(t) }}</span></td>
       </tr>
     {% endfor %}
     </tbody>
@@ -78,6 +71,12 @@
 {% endif %}
 
 {% if not read_only %}
+{# right-click (long-press) menu for a title in the list; the script below fills it in #}
+<div class="ctx" id="ctx" role="menu" hidden>
+  <div class="ctx-head"></div>
+  <form class="ctx-drop" method="post" action="/media/step"><input type="hidden" name="title">
+    <button class="item warn" name="do" value="drop">drop</button></form>
+</div>
 <script>
   // Drag a title up or down the list, as on the todo Upcoming board: a dashed placeholder the size of the title
   // shows the slot, between the titles nearest the pointer. The list keeps the order it shows. Mouse only.
@@ -120,6 +119,37 @@
     dragged = null;
     ph.remove();
   });
+
+  // A title: right-click it for drop, or long-press it on a touch screen (the todo page's project menu).
+  // Dropping logs a dropped row; the title moves to Finished.
+  const ctx = document.getElementById("ctx");
+  let press = null;
+  function openCtx(show, x, y) {
+    ctx.querySelector(".ctx-head").textContent = show.dataset.title;
+    ctx.querySelector("[name=title]").value = show.dataset.title;
+    ctx.hidden = false;
+    ctx.style.left = `${Math.max(8, Math.min(x, innerWidth - ctx.offsetWidth - 8))}px`;
+    ctx.style.top = `${Math.max(8, Math.min(y, innerHeight - ctx.offsetHeight - 8))}px`;
+  }
+  document.addEventListener("contextmenu", e => {
+    const show = e.target.closest(".show[data-title]");
+    if (!show) return;
+    e.preventDefault();
+    openCtx(show, e.clientX, e.clientY);
+  });
+  document.addEventListener("touchstart", e => {
+    const show = e.target.closest?.(".show[data-title] .ti");
+    if (!show) return;
+    const { clientX: x, clientY: y } = e.touches[0];
+    press = setTimeout(() => { press = "open"; openCtx(show.closest(".show"), x, y); }, 500);
+  }, { passive: true });
+  for (const type of ["touchend", "touchmove", "touchcancel"])
+    document.addEventListener(type, () => { if (press !== "open") { clearTimeout(press); press = null; } }, { passive: true });
+  document.addEventListener("click", e => {
+    if (press === "open") { e.preventDefault(); press = null; return; }  // the click that ends a long-press
+    if (!ctx.hidden && !ctx.contains(e.target)) ctx.hidden = true;
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") ctx.hidden = true; });
 </script>
 {% endif %}
 {% endblock %}

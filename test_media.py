@@ -1,11 +1,14 @@
 """Checks for media.csv parsing and the media page's log in media.py. Run: .venv/bin/python -m unittest"""
 import datetime as dt
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import data
 import media
+import test_auth  # the app on a throwaway data folder, and call() to send it requests
 
 HEADER = "date,time,title,kind,season,episode,episodes,position,runtime,status\n"
 D = dt.date(2026, 10, 23)
@@ -127,6 +130,49 @@ class MediaTest(unittest.TestCase):
         self.assertEqual([media.ago(D - dt.timedelta(days=n), D) for n in (0, 1, 2, 6, 7)],
                          ["today", "yesterday", "Wed 21", "Sat 17", "Oct 16"])
         self.assertEqual(media.ago(dt.date(2025, 12, 31), D), "Dec 31 2025")
+
+
+class MediaPageTest(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.dict(os.environ, {"LIFE_DASHBOARD_TOKEN": test_auth.TOKEN})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.app, self.call = test_auth.app, test_auth.call
+        tmp = tempfile.TemporaryDirectory()  # its own TODO_DB: test_auth's folder is gone once its tests ran
+        self.addCleanup(tmp.cleanup)
+        db = mock.patch.object(self.app, "TODO_DB", Path(tmp.name) / "todo.sqlite")
+        db.start()
+        self.addCleanup(db.stop)
+        self.app.todo.init(self.app.TODO_DB)
+        self.app.media.init(self.app.TODO_DB)
+        self.jar = self.call("POST", "/login", {"token": test_auth.TOKEN, "next": "/media"})[1]["set-cookie"].split(";")[0]
+
+    def finished_row(self, title: str) -> str:
+        body = self.call("GET", "/media", cookie=self.jar)[2]
+        finished = body[body.index("[ Finished ]"):]
+        return finished[finished.index(title):finished.index("</tr>", finished.index(title))]
+
+    def test_drop_from_the_menu(self):
+        for q in ("Menu Dropped s1e2 5:45", "Menu Done s1e3"):
+            self.call("POST", "/media/log", {"q": q}, cookie=self.jar)
+        body = self.call("GET", "/media", cookie=self.jar)[2]
+        self.assertIn('id="ctx"', body)
+        self.assertIn('<button class="item warn" name="do" value="drop">drop</button>', body)
+        self.assertEqual(self.call("POST", "/media/step", {"title": "Menu Dropped", "do": "drop"}, cookie=self.jar)[0], 303)
+        self.call("POST", "/media/step", {"title": "Menu Done", "do": "done"}, cookie=self.jar)
+        ts = {t["title"]: t for t in self.app.media_titles()}
+        self.assertEqual((ts["Menu Dropped"]["status"], ts["Menu Done"]["status"]), ("dropped", "done"))
+        self.assertIn('Menu Dropped <span class="warn">dropped</span></td>', self.finished_row("Menu Dropped"))
+        self.assertNotIn("dropped", self.finished_row("Menu Done"))
+        self.assertNotIn("5:45", self.finished_row("Menu Dropped"))  # no "at" column: finished means the whole title
+        self.assertNotIn("<th>at</th>", body)
+
+    def test_signed_out_cannot_drop(self):
+        self.call("POST", "/media/log", {"q": "Kept s1e1"}, cookie=self.jar)
+        self.assertNotIn('id="ctx"', self.call("GET", "/media")[2])
+        self.assertEqual(self.call("POST", "/media/step", {"title": "Kept", "do": "drop"}, sec_fetch_mode="cors")[0], 403)
+        self.assertEqual(self.call("POST", "/media/step", {"title": "Kept", "do": "drop"})[0], 303)  # a plain form: to the login box
+        self.assertEqual(next(t for t in self.app.media_titles() if t["title"] == "Kept")["status"], "watching")
 
 
 if __name__ == "__main__":

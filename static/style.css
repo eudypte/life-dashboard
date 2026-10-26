@@ -271,6 +271,7 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
 .ctx .item.warn { color: var(--warn); }
 .ctx .item:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ctx form { display: none; }
+.ctx .ctx-drop { display: block; }  /* the media page's menu: one item, no modes */
 .ctx[data-mode="rename"] .ctx-main, .ctx[data-mode="color"] .ctx-main, .ctx[data-mode="delete"] .ctx-main { display: none; }
 .ctx:not([data-kind="label"]) .for-label { display: none; }
 .ctx[data-mode="color"] .ctx-color { display: flex; gap: 6px; padding: 2px 0; }
