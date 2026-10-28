@@ -14,6 +14,10 @@
   --bg:#282828; --bg2:#3c3836; --dim:#928374; --fg:#d5c4a1; --hi:#fbf1c7;
   --kcal:#b8bb26; --p:#83a598; --c:#fabd2f; --f:#fe8019; --accent:#8ec07c; --warn:#fb4934;
 }
+[data-theme="gruvbox-light"] {
+  --bg:#f2e5bc; --bg2:#d5c4a1; --dim:#7c6f64; --fg:#504945; --hi:#282828;
+  --kcal:#79740e; --p:#076678; --c:#b57614; --f:#d65d0e; --accent:#af3a03; --warn:#9d0006;
+}
 [data-theme="nord"] {
   --bg:#2e3440; --bg2:#3b4252; --dim:#6c7a96; --fg:#d8dee9; --hi:#eceff4;
   --kcal:#a3be8c; --p:#81a1c1; --c:#ebcb8b; --f:#d08770; --accent:#88c0d0; --warn:#bf616a;
@@ -37,7 +41,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--bg); color-scheme: dark; }
-html[data-theme="solarized-light"], html[data-theme="paper"] { color-scheme: light; }
+html[data-theme="solarized-light"], html[data-theme="gruvbox-light"], html[data-theme="paper"] { color-scheme: light; }
 body {
   margin: 0 auto; max-width: 1320px; padding: 14px 16px 32px;
   background: var(--bg); color: var(--fg);

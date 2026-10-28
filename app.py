@@ -22,7 +22,7 @@ HERE = Path(__file__).parent
 CFG = data.load_config()
 THEMES = {
     "solarized-dark": "Solarized Dark", "solarized-light": "Solarized Light",
-    "gruvbox": "Gruvbox", "nord": "Nord", "dracula": "Dracula",
+    "gruvbox": "Gruvbox", "gruvbox-light": "Gruvbox Light", "nord": "Nord", "dracula": "Dracula",
     "tokyo-night": "Tokyo Night", "amber": "Amber CRT", "paper": "Paper",
 }
 RANGES = (7, 30, 90)
