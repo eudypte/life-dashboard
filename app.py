@@ -294,12 +294,17 @@ media_app = APIRouter(dependencies=[Depends(require_login)])
 
 
 def media_titles() -> list[dict]:
-    return media.titles(media.merged(data.media(CFG), media.page_rows(TODO_DB)))
+    """Every title, each with its watch link (or None)."""
+    links = media.links(TODO_DB)
+    ts = media.titles(media.merged(data.media(CFG), media.page_rows(TODO_DB)))
+    for t in ts:
+        t["link"] = links.get(t["title"].casefold())
+    return ts
 
 
 @media_app.get("/media")
 def media_view(request: Request, error: str = "", q: str = ""):
-    """error and q: quick add logged nothing (media.ERRORS says why); the box keeps what was typed."""
+    """error: quick add or a link changed nothing (media.ERRORS says why); q: the box keeps what was typed."""
     ts = media_titles()
     return render(request, "media.html", "media", logged=bool(ts), error=media.ERRORS.get(error), q=q if error else "",
                   watching=media.arrange([t for t in ts if t["status"] == "watching"], media.placed(TODO_DB)),
@@ -356,6 +361,19 @@ async def media_move(request: Request):
         raise HTTPException(404)
     if f.get("to") in ("top", "up", "down", "bottom"):
         media.set_order(TODO_DB, media.move(order, f["title"], f["to"]))
+    return RedirectResponse("/media", status_code=303)
+
+
+@media_app.post("/media/link")
+async def media_link(request: Request):
+    """The right-click menu: where a title is watched. Blank clears it."""
+    f = await form(request)
+    if not any(t["title"] == f.get("title") for t in media_titles()):
+        raise HTTPException(404)
+    url = None
+    if f.get("url", "").strip() and not (url := media.link_url(f["url"])):
+        return RedirectResponse("/media?error=link", status_code=303)
+    media.set_link(TODO_DB, f["title"], url)
     return RedirectResponse("/media", status_code=303)
 
 

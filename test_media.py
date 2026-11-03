@@ -1,6 +1,7 @@
 """Checks for media.csv parsing and the media page's log in media.py. Run: .venv/bin/python -m unittest"""
 import datetime as dt
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -90,6 +91,26 @@ class MediaTest(unittest.TestCase):
         self.assertEqual([media.move(order, "C", to) for to in ("top", "up", "down", "bottom")],
                          [["C", "A", "B", "D"], ["A", "C", "B", "D"], ["A", "B", "D", "C"], ["A", "B", "D", "C"]])
         self.assertEqual((media.move(order, "A", "up"), media.move(order, "D", "down")), (order, order))  # already at the end
+
+    def test_link_url(self):
+        self.assertEqual([media.link_url(u) for u in ("https://www.netflix.com/title/123", " http://example.com ",
+                                                      "netflix.com/title/123", "javascript:alert(1)", "ftp://x.org/a",
+                                                      "not a link", "https://")],
+                         ["https://www.netflix.com/title/123", "http://example.com", "https://netflix.com/title/123",
+                          None, None, None, None])
+
+    def test_links_survive_old_files_and_clear(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "todo.sqlite"
+            with sqlite3.connect(db) as con:  # a file made before links: the log table only
+                con.execute(media.SCHEMA)
+            con.close()
+            media.init(db)
+            media.set_link(db, "The Bear", "https://www.hulu.com/series/the-bear")
+            media.set_link(db, "the bear", "https://www.disneyplus.com/the-bear")  # any case: one link per title
+            self.assertEqual(media.links(db), {"the bear": "https://www.disneyplus.com/the-bear"})
+            media.set_link(db, "The Bear", None)
+            self.assertEqual(media.links(db), {})
 
     def test_movie(self):
         ts = titles("2026-10-18,,Dune,movie,,,,1:12:40,166,\n2026-10-18,,Clip,,,,,0:04:00,,\n2026-10-18,,Show,show,1,1,,,,\n")
@@ -189,19 +210,44 @@ class MediaPageTest(unittest.TestCase):
         t = next(t for t in self.app.media_titles() if t["title"] == "Menu Two")
         self.assertEqual((t["status"], t["episode"]), ("watching", 4))  # back where it stopped
         body = self.call("GET", "/media", cookie=self.jar)[2]
-        for attrs in ('data-title="Menu One" data-next="s1e"', 'data-title="Menu Two" data-next="e"', 'data-title="Menu Film" data-next=""'):
+        for attrs in ('data-title="Menu One" data-link="" data-next="s1e"', 'data-title="Menu Two" data-link="" data-next="e"', 'data-title="Menu Film" data-link="" data-next=""'):
             self.assertIn(attrs, body)  # "set where I am" fills the box with the title and these
         self.assertIn('value="again">watch again</button>', body)
         self.assertNotIn("touchstart", body)  # desktop only: no long-press menu
+
+    def test_watch_link(self):
+        self.call("POST", "/media/log", {"q": "Linked s1e2"}, cookie=self.jar)
+        body = self.call("GET", "/media", cookie=self.jar)[2]
+        self.assertIn('<span class="ti">Linked</span>', body)  # no link: plain text
+        self.assertIn('data-act="link">set link…</button>', body)
+        self.assertEqual(self.call("POST", "/media/link", {"title": "Linked", "url": "netflix.com/title/1"}, cookie=self.jar)[1]["location"],
+                         "/media")
+        body = self.call("GET", "/media", cookie=self.jar)[2]
+        self.assertIn('<a class="watch" href="https://netflix.com/title/1" target="_blank" rel="noopener noreferrer"', body)
+        self.assertIn('data-link="https://netflix.com/title/1"', body)
+        signed_out = self.call("GET", "/media")[2]
+        self.assertIn('href="https://netflix.com/title/1" target="_blank"', signed_out)  # anyone can follow it
+        self.assertNotIn("data-link", signed_out)
+        self.call("POST", "/media/link", {"title": "Linked", "url": "https://www.max.com/shows/x"}, cookie=self.jar)
+        self.assertEqual(self.app.media.links(self.app.TODO_DB), {"linked": "https://www.max.com/shows/x"})  # changed
+        status, headers, _ = self.call("POST", "/media/link", {"title": "Linked", "url": "javascript:alert(1)"}, cookie=self.jar)
+        self.assertEqual(headers["location"], "/media?error=link")
+        self.assertIn(self.app.media.ERRORS["link"], self.call("GET", "/media?error=link", cookie=self.jar)[2])
+        self.assertEqual(self.app.media.links(self.app.TODO_DB), {"linked": "https://www.max.com/shows/x"})  # kept
+        self.assertEqual(self.call("POST", "/media/link", {"title": "nobody", "url": "x.com"}, cookie=self.jar)[0], 404)
+        self.call("POST", "/media/link", {"title": "Linked", "url": ""}, cookie=self.jar)  # "clear link"
+        self.assertEqual(self.app.media.links(self.app.TODO_DB), {})
+        self.assertIn('<span class="ti">Linked</span>', self.call("GET", "/media", cookie=self.jar)[2])
 
     def test_signed_out_cannot_drop(self):
         self.call("POST", "/media/log", {"q": "Kept s1e1"}, cookie=self.jar)
         self.assertNotIn('id="ctx"', self.call("GET", "/media")[2])
         for path, f in (("/media/step", {"title": "Kept", "do": "drop"}), ("/media/step", {"title": "Kept", "do": "again"}),
-                        ("/media/move", {"title": "Kept", "to": "top"})):
+                        ("/media/move", {"title": "Kept", "to": "top"}), ("/media/link", {"title": "Kept", "url": "x.com"})):
             self.assertEqual(self.call("POST", path, f, sec_fetch_mode="cors")[0], 403, f)
         self.assertEqual(self.call("POST", "/media/step", {"title": "Kept", "do": "drop"})[0], 303)  # a plain form: to the login box
         self.assertEqual(next(t for t in self.app.media_titles() if t["title"] == "Kept")["status"], "watching")
+        self.assertEqual(self.app.media.links(self.app.TODO_DB), {})
 
 
 if __name__ == "__main__":

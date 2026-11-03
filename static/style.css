@@ -280,6 +280,11 @@ a[data-project], a[data-label] { -webkit-touch-callout: none; }
 /* the media page's menu: the items of a title in Watching, or of a row in Finished */
 .ctx:not([data-kind="watching"]) .for-watching, .ctx:not([data-kind="finished"]) .for-finished { display: none; }
 .ctx[data-kind="watching"] form.for-watching, .ctx[data-kind="finished"] form.for-finished { display: block; }
+.ctx.has-link form.ctx-unlink { display: block; }
+.ctx[data-mode="link"] .ctx-items { display: none; }  /* the link box takes the items' place */
+.ctx[data-mode="link"] .ctx-link { display: flex; gap: 1ch; }
+.ctx-link input { flex: 1; min-width: 24ch; font: inherit; background: var(--bg2); color: var(--hi); border: 1px solid var(--dim); padding: 1px 6px; }
+.ctx-link input:focus { outline: 0; border-color: var(--accent); }
 .ctx[data-mode="rename"] .ctx-main, .ctx[data-mode="color"] .ctx-main, .ctx[data-mode="delete"] .ctx-main { display: none; }
 .ctx:not([data-kind="label"]) .for-label { display: none; }
 .ctx[data-mode="color"] .ctx-color { display: flex; gap: 6px; padding: 2px 0; }

@@ -2,6 +2,12 @@
 {% block title %}Media · Life Dashboard{% endblock %}
 {% block refresh %}{% endblock %}{# a refresh would wipe a half-typed log line #}
 
+{# A title's name: a link to where it is watched (new tab) once it has one, else plain text. #}
+{% macro name(t) -%}
+  {%- if t.link %}<a class="watch" href="{{ t.link }}" target="_blank" rel="noopener noreferrer" draggable="false" title="watch: {{ t.link }}">{{ t.title }} <span class="dim">↗</span></a>
+  {%- else %}{{ t.title }}{% endif -%}
+{%- endmacro %}
+
 {% block main %}
 <fieldset class="span2">
   <legend>[ Watching ]</legend>
@@ -15,9 +21,9 @@
   {% endif %}
   <div class="shows">
   {% for t in watching %}
-    <div class="show"{% if not read_only %} draggable="true" data-title="{{ t.title }}" data-next="{{ '' if is_movie(t) else 's%de' % t.season if t.season is not none else 'e' }}"{% endif %}>
+    <div class="show"{% if not read_only %} draggable="true" data-title="{{ t.title }}" data-link="{{ t.link or '' }}" data-next="{{ '' if is_movie(t) else 's%de' % t.season if t.season is not none else 'e' }}"{% endif %}>
       <div class="head">
-        <span class="ti">{{ t.title }}{% if t.kind %} <span class="kind">· {{ t.kind }}</span>{% endif %}
+        <span class="ti">{{ name(t) }}{% if t.kind %} <span class="kind">· {{ t.kind }}</span>{% endif %}
           {%- if paused(t) %} <span class="kind">· <span class="ep">{{ "S" ~ t.season if t.season is not none }}E{{ t.episode }}</span> at <span class="ts">{{ t.position }}</span></span>{% endif %}</span>
         <span class="when">{{ t.last | ago(today) }}
           {%- if not read_only %}
@@ -58,8 +64,8 @@
     <thead><tr><th class="l">title</th><th class="l">when</th><th class="l hide-narrow">kind</th></tr></thead>
     <tbody>
     {% for t in finished %}
-      <tr{% if not read_only %} data-title="{{ t.title }}"{% endif %}>
-        <td class="l wrap">{{ t.title }}{% if t.status == "dropped" %} <span class="warn">dropped</span>{% endif %}</td>
+      <tr{% if not read_only %} data-title="{{ t.title }}" data-link="{{ t.link or '' }}"{% endif %}>
+        <td class="l wrap">{{ name(t) }}{% if t.status == "dropped" %} <span class="warn">dropped</span>{% endif %}</td>
         <td class="l dim">{{ t.last | ago(today) }}</td>
         <td class="l dim hide-narrow">{{ t.kind }}</td>
       </tr>
@@ -74,6 +80,7 @@
 {# right-click menu for a title in Watching or a row in Finished; the script below fills it in #}
 <div class="ctx" id="ctx" role="menu" hidden>
   <div class="ctx-head"></div>
+  <div class="ctx-items">
   <form class="for-watching" method="post" action="/media/move"><input type="hidden" name="title">
     {%- for to in ("top", "up", "down", "bottom") %}<button class="item" name="to" value="{{ to }}">move {{ "to " if to in ("top", "bottom") }}{{ to }}</button>{% endfor %}</form>
   <div class="ctx-sep for-watching"></div>
@@ -83,6 +90,13 @@
     <button class="item warn" name="do" value="drop">drop</button></form>
   <form class="for-finished" method="post" action="/media/step"><input type="hidden" name="title">
     <button class="item" name="do" value="again">watch again</button></form>
+  <div class="ctx-sep"></div>
+  <button type="button" class="item" data-act="link">set link…</button>
+  <form class="ctx-unlink" method="post" action="/media/link"><input type="hidden" name="title"><input type="hidden" name="url" value="">
+    <button class="item warn">clear link</button></form>
+  </div>
+  <form class="ctx-link" method="post" action="/media/link"><input type="hidden" name="title">
+    <input name="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…" aria-label="where it is watched"><button class="btn">save</button></form>
 </div>
 <script>
   // Drag a title up or down the list, as on the todo Upcoming board: a dashed placeholder the size of the title
@@ -135,7 +149,11 @@
     ctx.querySelector(".ctx-head").textContent = title;
     for (const input of ctx.querySelectorAll("[name=title]")) input.value = title;
     for (const b of ctx.querySelectorAll("[name=to]")) b.hidden = b.value === "top" || b.value === "up" ? i === 0 : i === shows.length - 1;
+    ctx.querySelector(".ctx-link [name=url]").value = el.dataset.link;
+    ctx.querySelector("[data-act=link]").textContent = el.dataset.link ? "change link…" : "set link…";
+    ctx.classList.toggle("has-link", !!el.dataset.link);
     ctx.dataset.kind = kind;
+    ctx.dataset.mode = "";
     ctx.hidden = false;
     ctx.style.left = `${Math.max(8, Math.min(x, innerWidth - ctx.offsetWidth - 8))}px`;
     ctx.style.top = `${Math.max(8, Math.min(y, innerHeight - ctx.offsetHeight - 8))}px`;
@@ -148,6 +166,14 @@
     openCtx(show || row, show ? "watching" : "finished", e.clientX, e.clientY);
   });
   ctx.addEventListener("click", e => {
+    if (e.target.closest("[data-act=link]")) {  // the link box in place of the items; blank and save clears it
+      ctx.dataset.mode = "link";
+      const url = ctx.querySelector(".ctx-link [name=url]");
+      ctx.style.left = `${Math.max(8, Math.min(parseFloat(ctx.style.left), innerWidth - ctx.offsetWidth - 8))}px`;
+      url.focus();
+      url.select();
+      return;
+    }
     if (!e.target.closest("[data-act=where]")) return;
     const show = document.querySelector(`.show[data-title="${CSS.escape(ctx.querySelector("[name=title]").value)}"]`);
     ctx.hidden = true;

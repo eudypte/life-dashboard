@@ -7,6 +7,7 @@ NUTRITION_DIR, appended outside the app, and this page's own log, a table in the
 import datetime as dt
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import data
 from todo import _db
@@ -28,15 +29,20 @@ ORDER_SCHEMA = """CREATE TABLE IF NOT EXISTS media_order (
   key TEXT PRIMARY KEY,  -- the casefolded title
   pos INTEGER NOT NULL   -- its place in the list, set by dragging
 )"""
+LINK_SCHEMA = """CREATE TABLE IF NOT EXISTS media_link (
+  key TEXT PRIMARY KEY,  -- the casefolded title
+  url TEXT NOT NULL      -- where it is watched; the title's name links there
+)"""
 COLUMNS = ("date", "time", "title", "kind", "season", "episode", "episodes", "position", "runtime", "status")
 # quick add: "severance s2e8", "frieren e20", "dune 1:12:40", "the bear s3e8 5:45" (paused in that episode),
 # any of them with "done" or "drop" last
 STATUS_RE = re.compile(r"\s+(done|drop(?:ped)?)$", re.I)
 POSITION_RE = re.compile(r"\s+(\d+:\d+(?::\d+)?)$")
 EPISODE_RE = re.compile(r"\s+(?:s(\d{1,3})\s*e(\d{1,4})|e(\d{1,4}))$", re.I)
-ERRORS = {  # why quick add logged nothing, shown under the box
+ERRORS = {  # why quick add or a link changed nothing, shown under the box
     "title": "nothing logged: start with the title, e.g. the bear s3e8 5:45",
     "time": "nothing logged: a time must be m:ss or h:mm:ss, e.g. 5:45 or 1:12:40",
+    "link": "link not saved: it must be a web address, e.g. https://www.netflix.com/title/123",
 }
 
 
@@ -44,6 +50,7 @@ def init(path: Path) -> None:
     with _db(path) as con:
         con.execute(SCHEMA)
         con.execute(ORDER_SCHEMA)
+        con.execute(LINK_SCHEMA)  # files made before links gain the table here
 
 
 def log(path: Path, row: dict) -> None:
@@ -99,6 +106,35 @@ def set_order(path: Path, titles: list[str]) -> None:
         con.execute("DELETE FROM media_order")
         con.executemany("INSERT OR IGNORE INTO media_order (key, pos) VALUES (?, ?)",
                         [(title.casefold(), i) for i, title in enumerate(titles)])
+
+
+def link_url(text: str) -> str | None:
+    """A watch link as typed: http(s) only, "https://" added when there is no scheme. None if it is not one
+    (another scheme like "javascript:" turns into a host that does not parse)."""
+    text = text.strip()
+    if "://" not in text:
+        text = "https://" + text
+    parts = urlsplit(text)
+    try:
+        parts.port  # noqa: B018  raises on a host like "javascript:alert(1)"
+    except ValueError:
+        return None
+    ok = parts.scheme in ("http", "https") and "." in (parts.hostname or "") and not any(c.isspace() for c in text)
+    return text if ok else None
+
+
+def links(path: Path) -> dict[str, str]:
+    with _db(path) as con:
+        return dict(con.execute("SELECT key, url FROM media_link").fetchall())
+
+
+def set_link(path: Path, title: str, url: str | None) -> None:
+    """None clears it."""
+    with _db(path) as con:
+        if url:
+            con.execute("INSERT OR REPLACE INTO media_link (key, url) VALUES (?, ?)", (title.casefold(), url))
+        else:
+            con.execute("DELETE FROM media_link WHERE key = ?", (title.casefold(),))
 
 
 def move(order: list[str], title: str, to: str) -> list[str]:
