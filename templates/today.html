@@ -14,7 +14,7 @@
   <legend>[ {{ "Today" if date == today else date.strftime("%b %d") }} ]</legend>
   {% if rows %}
   <dl class="kv">
-    <dt>Calories =</dt><dd><span class="kcal">{{ t.calories | n }}</span> <span class="dim">kcal · {{ t["items"] | plural("item") }}</span></dd>
+    <dt>Calories =</dt><dd><span class="kcal">{{ t.calories | n }}</span> <span class="dim">kcal</span></dd>
     <dt>Protein =</dt><dd><span class="mp">{{ t.protein_g | n }} g</span>{% if pg %} <span class="dim">/ {{ pg | n }} g</span>{% endif %}{{ known(t.protein_g_known, t["items"]) }}</dd>
     <dt>Carbs =</dt><dd><span class="mc">{{ t.carbs_g | n }} g</span>{{ known(t.carbs_g_known, t["items"]) }}</dd>
     <dt>Fat =</dt><dd><span class="mf">{{ t.fat_g | n }} g</span>{{ known(t.fat_g_known, t["items"]) }}</dd>
@@ -33,7 +33,7 @@
     <div{% if d.date == date %} class="cur"{% endif %}>
       <span class="{{ 'hi' if d.date == date else 'dim' }}">{{ d.date.strftime("%a %d") }}</span>
       {% if d.logged %}<span class="b track kcal"><i style="width:{{ d.totals.calories | pct(week_top) }}%"></i>{% if week_top and d.totals.calories > week_top %}<i class="over" style="width:{{ [100 * (d.totals.calories / week_top - 1), 24] | min | round(1) }}%"></i>{% endif %}</span><span>{{ d.totals.calories | n }}</span>
-      {% else %}<span class="gap">· no entries</span>{% endif %}
+      {% else %}<span class="gap">no entries</span>{% endif %}
     </div>
   {% endfor %}
   </div>
@@ -77,8 +77,8 @@
   {{ weight_svg(chart, unit) }}
   <dl class="kv">
     <dt>Latest =</dt><dd>{{ weight_stats.latest.kg | wt }} <span class="dim">{{ weight_stats.latest.date.strftime("%b %d") }} {{ weight_stats.latest.time }}</span></dd>
-    <dt>30d mean =</dt><dd>{{ weight_stats.mean | wt }} <span class="dim">{{ weight_stats.count }} weigh-ins · line = 7-day mean</span></dd>
-    <dt>Change =</dt><dd>{{ weight_stats.change | wtd }} <span class="dim">first to last</span></dd>
+    <dt>30d mean =</dt><dd>{{ weight_stats.mean | wt }}</dd>
+    <dt>Change =</dt><dd>{{ weight_stats.change | wtd }}</dd>
   </dl>
   {% else %}
   <p class="empty">no weigh-ins in the last 30 days</p>
@@ -102,7 +102,7 @@
       <span class="{{ 'hi' if d.date == date else 'dim' }}">{{ d.date.strftime("%a %d") }}</span>
       {% if d.logged %}<span class="b track mp"><i style="width:{{ d.totals.protein_g | pct(protein_top) }}%"></i>{% if protein_top and d.totals.protein_g > protein_top %}<i class="over" style="width:{{ [100 * (d.totals.protein_g / protein_top - 1), 24] | min | round(1) }}%"></i>{% endif %}</span>
         <span>{{ d.totals.protein_g | n }}{% if pg and d.totals.protein_g >= pg %} <span class="kcal">✓</span>{% endif %}</span>
-      {% else %}<span class="gap">· no entries</span>{% endif %}
+      {% else %}<span class="gap">no entries</span>{% endif %}
     </div>
   {% endfor %}
   </div>

@@ -105,7 +105,7 @@ def goals() -> dict:
 
 def render(request: Request, name: str, view: str, **ctx):
     return templates.TemplateResponse(request, name, {
-        "view": view, "today": data.logical_today(CFG), "now": dt.datetime.now(),
+        "view": view, "today": data.logical_today(CFG),
         "conflicts": data.conflicts(CFG), "unit": CFG.weight_unit, "goal": goals(),
         "themes": THEMES, "ranges": RANGES, "signed_in": signed_in(request),
         "read_only": not signed_in(request), **ctx,

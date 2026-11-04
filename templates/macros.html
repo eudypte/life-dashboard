@@ -10,8 +10,7 @@
 
 {% block main %}
 <fieldset class="span2">
-  <legend>[ Macro split · {{ days }} d ] {{ ranges("/macros", days) }}</legend>
-  <p class="dim" style="margin:0 0 8px">kcal from protein / carbs / fat (4 / 4 / 9 kcal per g), counting only items where all three are known.</p>
+  <legend>[ Macro split ] {{ ranges("/macros", days) }}</legend>
   {% if overall %}
   {{ split_bar(overall) }}
   <dl class="kv" style="margin-top:8px">
@@ -42,7 +41,7 @@
         <td class="dim">{{ d.split.rows }}/{{ d.split.of_rows }}</td>
       </tr>
       {% else %}
-      <tr class="gap"><td class="l">{{ d.date.strftime("%a %m-%d") }}</td><td class="l" colspan="5">· {{ "no items with all three macros" if d.logged else "no entries" }}</td></tr>
+      <tr class="gap"><td class="l">{{ d.date.strftime("%a %m-%d") }}</td><td class="l" colspan="5">{{ "no items with all three macros" if d.logged else "no entries" }}</td></tr>
       {% endif %}
     {% endfor %}
     </tbody>

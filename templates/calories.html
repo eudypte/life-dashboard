@@ -5,11 +5,10 @@
 
 {% block main %}
 <fieldset class="span2">
-  <legend>[ Calories · {{ days }} d ] {{ ranges("/calories", days) }}</legend>
+  <legend>[ Calories ] {{ ranges("/calories", days) }}</legend>
   <dl class="kv">
     <dt>Average =</dt><dd>{% if avg.calories is not none %}<span class="kcal">{{ avg.calories | n }} kcal</span>
-      · <span class="mp">{{ avg.protein_g | n }}p</span> <span class="mc">{{ avg.carbs_g | n }}c</span> <span class="mf">{{ avg.fat_g | n }}f</span>
-      <span class="dim">over {{ logged }} logged of {{ days | plural("day") }}</span>{% else %}<span class="dim">nothing logged in this range</span>{% endif %}</dd>
+      · <span class="mp">{{ avg.protein_g | n }}p</span> <span class="mc">{{ avg.carbs_g | n }}c</span> <span class="mf">{{ avg.fat_g | n }}f</span>{% else %}<span class="dim">nothing logged in this range</span>{% endif %}</dd>
     {% if pg and logged %}<dt>Protein =</dt><dd>goal {{ pg | n }} g hit on {{ goal_hits }} of {{ logged | plural("logged day") }}</dd>{% endif %}
   </dl>
 </fieldset>
@@ -32,7 +31,7 @@
         <td class="dim hide-narrow">{{ d.totals["items"] }}</td>
       </tr>
       {% else %}
-      <tr class="gap"><td class="l">{{ d.date.strftime("%a %m-%d") }}</td><td class="l" colspan="6">· no entries</td></tr>
+      <tr class="gap"><td class="l">{{ d.date.strftime("%a %m-%d") }}</td><td class="l" colspan="6">no entries</td></tr>
       {% endif %}
     {% endfor %}
     </tbody>

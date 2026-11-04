@@ -4,14 +4,14 @@
 
 {% block main %}
 <fieldset class="span2">
-  <legend>[ Weight · {{ days }} d ] {{ ranges("/weight", days) }}</legend>
+  <legend>[ Weight ] {{ ranges("/weight", days) }}</legend>
   {% if chart %}
   {{ weight_svg(chart, unit, "only-wide") }}
   {{ weight_svg(chart_narrow, unit, "only-narrow") }}
   <dl class="kv">
     <dt>Latest =</dt><dd>{{ stats.latest.kg | wt }} <span class="dim">{{ stats.latest.date.strftime("%b %d") }} {{ stats.latest.time }}</span></dd>
-    <dt>Mean =</dt><dd>{{ stats.mean | wt }} <span class="dim">all {{ stats.count }} weigh-ins · line = 7-day mean</span></dd>
-    <dt>Change =</dt><dd>{{ stats.change | wtd }} <span class="dim">first to last</span></dd>
+    <dt>Mean =</dt><dd>{{ stats.mean | wt }}</dd>
+    <dt>Change =</dt><dd>{{ stats.change | wtd }}</dd>
   </dl>
   {% else %}
   <p class="empty">no weigh-ins in the last {{ days }} days</p>

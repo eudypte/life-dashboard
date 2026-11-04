@@ -28,7 +28,7 @@
     <div{% if d == today %} class="cur"{% endif %}>
       <span class="{{ 'hi' if d == today else 'dim' }}">{{ d.strftime("%a %d") }}</span>
       {% if n %}<span class="b track acc"><i style="width:{{ n | pct(week_top) }}%"></i></span><span>{{ n }}</span>
-      {% else %}<span class="gap">· not read</span>{% endif %}
+      {% else %}<span class="gap">not read</span>{% endif %}
     </div>
   {% endfor %}
   </div>
@@ -61,5 +61,3 @@
   {% endif %}
 </fieldset>
 {% endblock %}
-
-{% block footer %}read-only · refreshes every 60 s{% endblock %}
