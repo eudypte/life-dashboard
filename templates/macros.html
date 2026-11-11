@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_ui.html" import ranges %}
-{% block title %}Macros · Life Dashboard{% endblock %}
+{% block title %}Macros - Life Dashboard{% endblock %}
 
 {% macro split_bar(s) -%}
 <div class="split" role="img" aria-label="protein {{ s.p_pct | round | int }}%, carbs {{ s.c_pct | round | int }}%, fat {{ s.f_pct | round | int }}%">
@@ -17,7 +17,7 @@
     <dt>Protein =</dt><dd><span class="mp">{{ overall.p_pct | round | int }}%</span></dd>
     <dt>Carbs =</dt><dd><span class="mc">{{ overall.c_pct | round | int }}%</span></dd>
     <dt>Fat =</dt><dd><span class="mf">{{ overall.f_pct | round | int }}%</span></dd>
-    <dt>Coverage =</dt><dd class="dim">{{ overall.rows }}/{{ overall.of_rows }} items · {{ overall.kcal_covered | n }} of {{ overall.kcal_total | n }} kcal</dd>
+    <dt>Coverage =</dt><dd class="dim">{{ overall.rows }}/{{ overall.of_rows }} items - {{ overall.kcal_covered | n }} of {{ overall.kcal_total | n }} kcal</dd>
   </dl>
   {% else %}
   <p class="empty">no items with all three macros in this range</p>

@@ -330,7 +330,7 @@ class ViewTest(unittest.TestCase):
         self.assertEqual(todo.when(t, date_group, T), ("Oct 18 09:00", "warn"))
         self.assertEqual(todo.when(t, day_group, T), ("09:00", ""))
         self.assertEqual(todo.when(self.task(2, T), day_group, T), ("today", "faint"))
-        self.assertEqual(todo.when(self.task(3), date_group, T), ("+ date", "faint"))
+        self.assertEqual(todo.when(self.task(3), date_group, T), ("+ date", "nodate"))
         self.assertEqual(todo.when(self.task(4, d(10, 23)), date_group, T), ("Fri 23", ""))
         self.assertIsNone(todo.when(t, done_group, T))
         self.assertEqual(todo.meta(t, date_group, T, True), [("↻ weekly", "", ""), ("#home", "", "/todo/project/home")])

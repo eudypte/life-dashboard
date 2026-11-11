@@ -516,11 +516,12 @@ def repeat_label(rule: str) -> str:
 
 def when(t: dict, group: dict, today: dt.date) -> tuple[str, str] | None:
     """The clickable date of an open task, as (text, css class); None in the done group.
-    Where the group already says the day, it shows the time, or the day faintly."""
+    Where the group already says the day, it shows the time, or the day faintly. No date: "+ date", which a
+    pointer only sees on hovering the task (style.css), and signed-out visitors never see."""
     if group["done"]:
         return None
     if not t["due"]:
-        return "+ date", "faint"
+        return "+ date", "nodate"
     if group["mode"] == "time":
         return (t["due_time"], "") if t["due_time"] else (day_label(t["due"], today), "faint")
     text = day_label(t["due"], today) + (f" {t['due_time']}" if t["due_time"] else "")

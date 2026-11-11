@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Reading · Life Dashboard{% endblock %}
+{% block title %}Reading - Life Dashboard{% endblock %}
 
 {% block main %}
 <fieldset>
@@ -7,14 +7,14 @@
   {% if logged %}
   <dl class="kv">
     {% for b in now_reading %}
-    <dt>{{ "Now =" if loop.first }}</dt><dd><span class="hi">{{ b.title }}</span>{% if b.author %} <span class="dim">· {{ b.author }}</span>{% endif %}</dd>
-    {% if b.page is not none %}<dt></dt><dd>{% if b.pages %}<span class="b track acc"><i style="width:{{ b.page | pct(b.pages) }}%"></i></span> {% endif %}<span class="dim">p {{ b.page }}{% if b.pages %}/{{ b.pages }} · {{ (100 * b.page / b.pages) | round | int }}%{% endif %}</span></dd>{% endif %}
+    <dt>{{ "Now =" if loop.first }}</dt><dd><span class="hi">{{ b.title }}</span>{% if b.author %} <span class="dim">- {{ b.author }}</span>{% endif %}</dd>
+    {% if b.page is not none %}<dt></dt><dd>{% if b.pages %}<span class="b track acc"><i style="width:{{ b.page | pct(b.pages) }}%"></i></span> {% endif %}<span class="dim">p {{ b.page }}{% if b.pages %}/{{ b.pages }} - {{ (100 * b.page / b.pages) | round | int }}%{% endif %}</span></dd>{% endif %}
     {% else %}
     <dt>Now =</dt><dd><span class="dim">no book open</span></dd>
     {% endfor %}
-    <dt>This year =</dt><dd><span class="acc">{{ year_books | plural("book") }}</span> · {{ "{:,}".format(year_pages) }} pages</dd>
+    <dt>This year =</dt><dd><span class="acc">{{ year_books | plural("book") }}</span> - {{ "{:,}".format(year_pages) }} pages</dd>
     <dt>This week =</dt><dd>{{ week_pages }} pages</dd>
-    <dt>Streak =</dt><dd>{{ streak[0] | plural("day") }} <span class="dim">· longest {{ streak[1] }}</span></dd>
+    <dt>Streak =</dt><dd>{{ streak[0] | plural("day") }} <span class="dim">- longest {{ streak[1] }}</span></dd>
   </dl>
   {% else %}
   <p class="empty">nothing logged yet: reading.csv is missing or empty</p>

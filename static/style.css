@@ -169,12 +169,13 @@ svg.chart .mean { fill: none; stroke: var(--kcal); stroke-width: 2; stroke-linej
 .lc-p { --lc: var(--p); } .lc-c { --lc: var(--c); } .lc-f { --lc: var(--f); }
 .lc-kcal { --lc: var(--kcal); } .lc-accent { --lc: var(--accent); } .lc-warn { --lc: var(--warn); }
 .tok.label, .chip.lab, .nav a[data-label] { color: var(--lc); }
-a.lab { color: var(--lc); background: color-mix(in srgb, var(--lc) 14%, transparent); padding: 0 3px; white-space: nowrap; }
+a.lab { color: var(--lc); white-space: nowrap; }
 .btn { font: inherit; font-size: 12px; color: var(--bg); background: var(--accent); border: 0; padding: 1px 8px; cursor: pointer; white-space: nowrap; }
 .link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 form.inline { display: inline; }
 .preview { font-size: 12px; color: var(--dim); margin-top: 3px; min-height: 1.55em; overflow-wrap: anywhere; }
 .preview .ti { color: var(--hi); }
+.preview:empty { min-height: 0; margin-top: 0; }  /* nothing typed yet */
 .parsed > .chip:first-child { margin-left: 0; }
 .chip { background: var(--bg2); padding: 0 4px; margin-left: .6ch; white-space: nowrap; }
 .flash { font-size: 12.5px; margin-top: 6px; padding: 0 6px; overflow-wrap: anywhere; }
@@ -213,13 +214,17 @@ form.inline { display: inline; }
 .dayadd .under { display: flex; justify-content: space-between; align-items: baseline; gap: 1ch; }
 .dayadd .under .link { font-size: 12px; color: var(--dim); }
 html:not(.js) .dayadd .close { display: none; }
-/* the date sits right after the name; a long name wraps before the date and tags get squeezed */
-.t { display: grid; grid-template-columns: 3ch minmax(0, max-content) minmax(max-content, 1fr); column-gap: 1ch; padding: 2px 6px; align-items: baseline; }
+/* the title on its own line; the date, repeat, project and labels on a smaller line under it */
+.t { display: grid; grid-template-columns: 3ch minmax(0, 1fr); column-gap: 1ch; padding: 2px 6px; align-items: baseline; }
 .rows > .t:nth-child(odd) { background: var(--bg2); }
 .t > .tick { display: contents; }
 .t .box { font: inherit; color: var(--fg); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
-.t .name { color: var(--hi); overflow-wrap: anywhere; min-width: 0; }
-.t .meta { white-space: nowrap; font-size: 12px; color: var(--dim); }
+.t .name { color: var(--hi); overflow-wrap: anywhere; min-width: 0; justify-self: start; }  /* the hover block fits the title */
+.t .meta { grid-column: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1.5ch; font-size: 12px; color: var(--dim); }
+.t .meta:empty { display: none; }
+/* no date yet: "+ date" goes last and, with a pointer, shows only on the task under it (touch screens keep it) */
+.t .meta > :has(> .nodate) { order: 1; }
+@media (hover: hover) { .t:not(:hover):not(:focus-within) .meta > :has(> .nodate) { visibility: hidden; } }
 .t.done .name { color: var(--dim); text-decoration: line-through; }
 .t.done .box { color: var(--kcal); }
 .combo { position: relative; display: inline-block; }
@@ -233,7 +238,7 @@ details.when { display: inline-block; position: relative; }
 details.when summary { display: inline; cursor: pointer; list-style: none; }
 details.when summary::-webkit-details-marker { display: none; }
 details.when summary:hover, details.when[open] summary { text-decoration: underline; text-underline-offset: 3px; }
-details.when summary.faint, .t .meta > .faint { opacity: .55; }  /* the second: the same date, signed out */
+details.when summary:is(.faint, .nodate), .t .meta > .faint { opacity: .55; }  /* the second: the same date, signed out */
 details.when .menu { position: absolute; z-index: 2; top: calc(100% + 2px); left: 0; display: grid; gap: 6px; padding: 6px 8px; background: var(--bg); border: 1px solid var(--accent); text-align: left; white-space: nowrap; }
 details.when .opts { display: grid; gap: 2px; }
 details.when .item { display: flex; justify-content: space-between; gap: 3ch; font: inherit; color: var(--hi); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
@@ -358,7 +363,7 @@ button.tk { cursor: pointer; }
   .nav a[aria-current]::before, .nav a .mark { display: none; }
   .nav .sep { display: none; }
   .nav select { width: auto; margin-top: 6px; }
-  .nav .sub { display: flex; flex-wrap: wrap; gap: 2px 1.5ch; margin-top: 2px; }
+  .nav .sub { display: flex; flex-wrap: wrap; gap: 2px 1.5ch; margin-top: 2px; order: 1; flex-basis: 100%; }  /* its own row after the views */
   .nav .sub a, .nav .sub a[aria-current] { padding-left: 0; }
   .nav .sub a { display: inline; }
   .nav .n { display: inline-block; margin-left: .6ch; }  /* inline-block: no underline under the count */

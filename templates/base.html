@@ -29,9 +29,9 @@
       <div class="links">
       {% for key, label, href in [("today", "Today", "/"), ("calories", "Calories", "/calories"), ("macros", "Macros", "/macros"), ("weight", "Weight", "/weight"), ("todo", "Todo", "/todo"), ("reading", "Reading", "/reading"), ("media", "Media", "/media")] %}
         <a href="{{ href }}"{% if view == key %} aria-current="{{ 'true' if key == 'todo' else 'page' }}"{% endif %}><span class="mark">{{ "▶" if view == key else "▷" }} </span>{{ label }}</a>
+        {%- if key == "todo" %}{% block subnav %}{% endblock %}{% endif %}{# the todo page's own views, right under Todo #}
       {% endfor %}
       </div>
-      {% block subnav %}{% endblock %}
       <div class="sep"></div>
       <label class="dim" for="theme">theme</label>
       <select id="theme">

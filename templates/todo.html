@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_ui.html" import task_row, parsed, quickadd_input with context %}
-{% set legend = {"today": "Today · " ~ today.strftime("%a %b ") ~ today.day, "inbox": "Inbox", "upcoming": "Upcoming"}.get(page, "@ " ~ label if label else "# " ~ project) %}
-{% block title %}Todo · Life Dashboard{% endblock %}
+{% set legend = {"today": "Today - " ~ today.strftime("%a %b ") ~ today.day, "inbox": "Inbox", "upcoming": "Upcoming"}.get(page, "@ " ~ label if label else "# " ~ project) %}
+{% block title %}Todo - Life Dashboard{% endblock %}
 {% block refresh %}{% endblock %}{# a refresh would wipe a half-typed task #}
 
 {% block subnav %}
@@ -35,7 +35,7 @@
   {% if added %}<div class="flash"><span class="dim">added</span> {{ parsed(added, today) }}</div>{% endif %}
   {% if ticked %}
   <div class="flash"><span class="kcal">✓</span> <span class="hi">{{ ticked.title }}</span>
-    {%- if ticked.repeat %} <span class="dim">· next {{ ticked.due | day_label(today, true) }}</span>{% endif %} ·
+    {%- if ticked.repeat %} <span class="dim">- next {{ ticked.due | day_label(today, true) }}</span>{% endif %} -
     <form class="inline" method="post" action="/todo/{{ ticked.id }}/done"><input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="undo" value="1"><button class="link">undo</button></form></div>
   {% endif %}
   </div>
@@ -48,7 +48,7 @@
   <div class="tasks board">
   {% for g in groups if g.rows or g.keep %}
     <section class="col{{ ' today' if g.day == today }}"{% if g.day %} id="d{{ g.day }}" data-day="{{ g.day }}"{% endif %}>
-      <div class="col-head">{% if g.day %}<span class="hi">{{ g.label }}</span> · {{ g.note }}{% else %}<span class="{{ g.cls }}">{{ g.label }}</span>{% endif %} <span class="dim">{{ g.rows | length or "" }}</span></div>
+      <div class="col-head">{% if g.day %}<span class="hi">{{ g.label }}</span> - {{ g.note }}{% else %}<span class="{{ g.cls }}">{{ g.label }}</span>{% endif %} <span class="dim">{{ g.rows | length or "" }}</span></div>
       {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, true, date_options) }}{% endfor %}</div>{% endif %}
       {% if g.day and not read_only %}
       <details class="dayadd" id="add-{{ g.day }}"><summary>+ add task</summary>
@@ -66,7 +66,7 @@
   {% else %}
   <div class="tasks">
   {% for g in groups if g.rows or g.keep %}
-    <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">· {{ g.note }}</span>{% endif %} <span class="dim">· {{ g.rows | length or "nothing" }}</span></div>
+    <div class="grp {{ g.cls }}">{{ g.label }}{% if g.note %} <span class="dim">{{ g.note }}</span>{% endif %} <span class="dim">{{ g.rows | length or "nothing" }}</span></div>
     {% if g.rows %}<div class="rows">{% for t in g.rows %}{{ task_row(t, g, here, edit, today, rules, page != "project", date_options) }}{% endfor %}</div>{% endif %}
   {% else %}
     <p class="empty">nothing here</p>

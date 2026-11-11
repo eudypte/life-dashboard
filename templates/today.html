@@ -50,7 +50,7 @@
     {% for r in rows %}
     <div class="entry">
       <span class="dim">{{ r.time }}</span>
-      <span class="food"{% if r.notes or r.serving_size %} title="{{ r.serving_size }}{% if r.serving_size and r.notes %} · {% endif %}{{ r.notes }}"{% endif %}>{{ r.food }}{% if r.servings is not none and r.servings != 1 %} <span class="dim">×{{ r.servings | n }}</span>{% endif %}</span>
+      <span class="food"{% if r.notes or r.serving_size %} title="{{ r.serving_size }}{% if r.serving_size and r.notes %} - {% endif %}{{ r.notes }}"{% endif %}>{{ r.food }}{% if r.servings is not none and r.servings != 1 %} <span class="dim">×{{ r.servings | n }}</span>{% endif %}</span>
       <span class="num kcal kcal-cell">{{ r.calories | n }}</span>
       <span class="sub">
         <span class="src src-{{ r.source }}"{% if r.source == "estimate" %} title="estimate: lowest confidence"{% endif %}>
@@ -72,7 +72,7 @@
 </fieldset>
 
 <fieldset>
-  <legend>[ Weight · 30 d ]</legend>
+  <legend>[ Weight - 30 d ]</legend>
   {% if chart %}
   {{ weight_svg(chart, unit) }}
   <dl class="kv">

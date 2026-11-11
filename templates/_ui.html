@@ -1,11 +1,11 @@
 {# Shared snippets. #}
 
 {% macro known(count, total) -%}
-  {%- if total and count < total %} <span class="dim">· {{ count }}/{{ total }} known</span>{% endif -%}
+  {%- if total and count < total %} <span class="dim">- {{ count }}/{{ total }} known</span>{% endif -%}
 {%- endmacro %}
 
 {% macro ranges(view_href, days) -%}
-  <span class="ranges">{% for r in [7, 30, 90] %}<a href="{{ view_href }}?days={{ r }}"{% if r == days %} aria-current="true"{% endif %}>{{ r }}d</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>
+  <span class="ranges">{% for r in [7, 30, 90] %}<a href="{{ view_href }}?days={{ r }}"{% if r == days %} aria-current="true"{% endif %}>{{ r }}d</a>{% if not loop.last %} - {% endif %}{% endfor %}</span>
 {%- endmacro %}
 
 {% macro weight_svg(chart, unit, cls="") -%}
@@ -25,7 +25,7 @@
 {# ---------- todo ---------- #}
 
 {# What quick add read. title=true (the "added" line): the task's name and all its fields.
-   title=false (the line under a quick-add box): only what the parser picked up, or the syntax hint. #}
+   title=false (the line under a quick-add box): only what the parser picked up, else nothing. #}
 {% macro parsed(p, today, title=true) -%}
   {%- if p and p.title and title -%}
     → <span class="ti">{{ p.title }}</span>
@@ -40,8 +40,6 @@
     {#- #}{% if p.priority < 4 %}<span class="chip p{{ p.priority }}">p{{ p.priority }}</span>{% endif %}
     {#- #}{% if p.project %}<span class="chip acc">#{{ p.project }}</span>{% endif %}
     {#- #}{% for name, color in p.labels %}<span class="chip lab lc-{{ color }}">@{{ name }}</span>{% endfor %}
-  {%- else -%}
-    <span class="hint">fri 5pm · p1 · #project · every week</span>
   {%- endif -%}
 {%- endmacro %}
 
@@ -98,9 +96,9 @@
     <button class="box{{ pri }}" aria-label="{{ 'un-tick' if g.done else 'tick' }} {{ t.title }}">{{ "[x]" if g.done else "[ ]" }}</button></form>
   <a class="name" href="{{ here }}?edit={{ t.id }}#t{{ t.id }}"{% if g.board %} draggable="false"{% endif %}>{{ t.title }}</a>
   {%- endif %}
-  <span class="meta">
+  <span class="meta">{# a second line under the title; spacing, not dots, between its parts #}
     {%- set w = t | task_when(g, today) %}
-    {%- if w and read_only %}<span{% if w[1] %} class="{{ w[1] }}"{% endif %}>{{ w[0] }}</span>
+    {%- if w and read_only %}{% if w[1] != "nodate" %}<span{% if w[1] %} class="{{ w[1] }}"{% endif %}>{{ w[0] }}</span>{% endif %}
     {%- elif w %}<details class="when"><summary{% if w[1] %} class="{{ w[1] }}"{% endif %} title="move to another day">{{ w[0] }}</summary>
       <div class="menu">
         <form class="opts" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">
@@ -109,7 +107,7 @@
           {%- endfor %}</form>
         <form class="pick" method="post" action="/todo/{{ t.id }}/due"><input type="hidden" name="next" value="{{ here }}">{{ datefield("due", t.due, true) }}<button class="btn">set</button></form>
       </div></details>{% endif %}
-    {%- for text, cls, href in t | task_meta(g, today, show_project) %}{% if w or not loop.first %} · {% endif %}
+    {%- for text, cls, href in t | task_meta(g, today, show_project) %}
       {%- if href %}<a class="go{{ ' ' ~ cls if cls }}" href="{{ href }}"{% if g.board %} draggable="false"{% endif %}
         {%- if t.project and text == "#" ~ t.project %} data-project="{{ t.project }}"{% elif text[0] == "@" %} data-label="{{ text[1:] }}"{% endif %}>{{ text }}</a>{% else %}<span{% if cls %} class="{{ cls }}"{% endif %}>{{ text }}</span>{% endif %}
     {%- endfor -%}
