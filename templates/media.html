@@ -13,18 +13,17 @@
   <legend>[ Watching ]</legend>
   {% if not read_only %}
   <form class="add" method="post" action="/media/log">
-    <span class="plus">+</span><input name="q" placeholder="log: severance s2e8 · frieren e20 · dune 1:12:40" autocomplete="off" spellcheck="false" aria-label="log what you watched" required value="{{ q }}"{% if error %} aria-describedby="media-error" autofocus{% endif %}>
+    <span class="plus">+</span><input name="q" autocomplete="off" spellcheck="false" aria-label="log what you watched" required value="{{ q }}"{% if error %} aria-describedby="media-error" autofocus{% endif %}>
     <button class="btn">log ⏎</button>
   </form>
-  <div class="preview">{% if error %}<span class="warn" id="media-error" role="alert">{{ error }}</span>
-    {%- else %}<span class="hint">title, then s2e8 · e20 · a time 5:45, then done or drop</span>{% endif %}</div>
+  {% if error %}<div class="preview"><span class="warn" id="media-error" role="alert">{{ error }}</span></div>{% endif %}
   {% endif %}
   <div class="shows">
   {% for t in watching %}
     <div class="show"{% if not read_only %} draggable="true" data-title="{{ t.title }}" data-link="{{ t.link or '' }}" data-next="{{ '' if is_movie(t) else 's%de' % t.season if t.season is not none else 'e' }}"{% endif %}>
       <div class="head">
-        <span class="ti">{{ name(t) }}{% if t.kind %} <span class="kind">· {{ t.kind }}</span>{% endif %}
-          {%- if paused(t) %} <span class="kind">· <span class="ep">{{ "S" ~ t.season if t.season is not none }}E{{ t.episode }}</span> at <span class="ts">{{ t.position }}</span></span>{% endif %}</span>
+        <span class="ti">{{ name(t) }}{% if t.kind %} <span class="kind">{{ t.kind }}</span>{% endif %}
+          {%- if paused(t) %} <span class="kind"><span class="ep">{{ "S" ~ t.season if t.season is not none }}E{{ t.episode }}</span> at <span class="ts">{{ t.position }}</span></span>{% endif %}</span>
         <span class="when">{{ t.last | ago(today) }}
           {%- if not read_only %}
           <form class="inline" method="post" action="/media/step"><input type="hidden" name="title" value="{{ t.title }}">
