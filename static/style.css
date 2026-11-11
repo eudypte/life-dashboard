@@ -38,10 +38,14 @@
   --bg:#f7f7f5; --bg2:#ebebe7; --dim:#9a9a94; --fg:#4a4a46; --hi:#111110;
   --kcal:#1a7f37; --p:#0a58ca; --c:#9a6700; --f:#c2410c; --accent:#0f766e; --warn:#cf222e;
 }
+[data-theme="contrast"] {
+  --bg:#fff; --bg2:#f2f2f2; --dim:#6e6e6e; --fg:#000; --hi:#000;
+  --kcal:#008020; --p:#0057d8; --c:#a45f00; --f:#c02c00; --accent:#000; --warn:#d00000;
+}
 
 * { box-sizing: border-box; }
 html { background: var(--bg); color-scheme: dark; }
-html[data-theme="solarized-light"], html[data-theme="gruvbox-light"], html[data-theme="paper"] { color-scheme: light; }
+html[data-theme="solarized-light"], html[data-theme="gruvbox-light"], html[data-theme="paper"], html[data-theme="contrast"] { color-scheme: light; }
 body {
   margin: 0 auto; max-width: 1320px; padding: 14px 16px 32px;
   background: var(--bg); color: var(--fg);
@@ -431,4 +435,40 @@ button.tk:hover { background: var(--accent); box-shadow: none; }
 :root[data-hover="current"] :is(.tok.project, .tok.label) { background: var(--bg2); box-shadow: -3px 0 0 var(--bg2), 3px 0 0 var(--bg2); }
 @media (max-width: 720px) {
   :root:not([data-hover="current"]) :is(.nav a, .nav .sub a):hover { margin: 0 -3px; padding: 1px 3px; }  /* inline links: room without shifting the row */
+}
+
+/* Contrast: white surfaces, black rules, gray stripes, and black active states. */
+:root[data-theme="contrast"] .lc-accent { --lc:#007f80; }
+:root[data-theme="contrast"] :is(.nav a[data-project]:not([aria-current]), .t .meta a[data-project], .chip.acc) { color:#0057d8; }
+:root[data-theme="contrast"] .tok.project { --lc:#0057d8; }
+:root[data-theme="contrast"] .main > fieldset:not(.span2) .acc { color:#007f80; }
+:root[data-theme="contrast"] .main > fieldset:not(.span2) .b.track.acc { color:#007f80; }
+:root[data-theme="contrast"] :is(fieldset, .add, .nav select, .entry-head, .entry-total, th,
+  .board .rows > .t, .suggest, details.when .menu, .datefield input, .js .datefield,
+  .edit input, .edit select, .ctx, .ctx-link input, .ctx-rename input, .step) {
+  border-color: #000;
+}
+:root[data-theme="contrast"] :is(.nav .sep, .nav .subsep, .ctx-sep, .show + .show,
+  .rows > .t + .t, .entry + .entry) { border-color: #000; }
+:root[data-theme="contrast"] .nav a[aria-current]:not([aria-current="true"]) {
+  color: #fff;
+  background: #000;
+}
+:root[data-theme="contrast"] :is(.entry, tbody tr, .rows > .t, .show):hover { background: #e8e8e8; }
+:root[data-theme="contrast"] .board .rows > .t:nth-child(odd) { background: #f2f2f2; }
+:root[data-theme="contrast"] .board .rows > .t:hover { background: #e8e8e8; }
+:root[data-theme="contrast"] :is(.nav a[aria-current], .suggest li.on) { border-color: #000; }
+:root[data-theme="contrast"] .col.today .col-head { box-shadow: none; border-bottom: 2px solid #000; }
+:root[data-theme="contrast"] .tk { box-shadow: none; border: 1px solid #000; }
+:root[data-theme="contrast"] .tk.w { border-color: #000; }
+:root[data-theme="contrast"] .tk.ip { background: #6e6e6e; }
+:root[data-theme="contrast"] :is(.tok.project, .tok.label) { box-shadow: none !important; }
+:root[data-theme="contrast"] .btn:hover { box-shadow: none !important; border: 1px solid #000; padding: 0 7px; }
+:root[data-theme="contrast"] .login .mask input:autofill { box-shadow: 0 0 0 99px #fff inset; }
+@media (max-width: 720px) {
+  :root[data-theme="contrast"] .nav a[aria-current]:not([aria-current="true"]) {
+    color: #000;
+    background: #f2f2f2;
+  }
+  :root[data-theme="contrast"] :is(.entry + .entry, .rows > .t + .t) { border-color: #000; }
 }

@@ -24,6 +24,7 @@ THEMES = {
     "solarized-dark": "Solarized Dark", "solarized-light": "Solarized Light",
     "gruvbox": "Gruvbox", "gruvbox-light": "Gruvbox Light", "nord": "Nord", "dracula": "Dracula",
     "tokyo-night": "Tokyo Night", "amber": "Amber CRT", "paper": "Paper",
+    "contrast": "Contrast",
 }
 RANGES = (7, 30, 90)
 TODO_DB = todo.db_path(CFG.data_dir)  # refuses a path inside NUTRITION_DIR
