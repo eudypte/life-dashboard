@@ -226,7 +226,7 @@ class MediaPageTest(unittest.TestCase):
         self.assertIn('<a class="watch" href="https://netflix.com/title/1" target="_blank" rel="noopener noreferrer"', body)
         self.assertIn('data-link="https://netflix.com/title/1"', body)
         signed_out = self.call("GET", "/media")[2]
-        self.assertIn('href="https://netflix.com/title/1" target="_blank"', signed_out)  # anyone can follow it
+        self.assertNotIn('https://netflix.com/title/1', signed_out)  # media details need the login
         self.assertNotIn("data-link", signed_out)
         self.call("POST", "/media/link", {"title": "Linked", "url": "https://www.max.com/shows/x"}, cookie=self.jar)
         self.assertEqual(self.app.media.links(self.app.TODO_DB), {"linked": "https://www.max.com/shows/x"})  # changed

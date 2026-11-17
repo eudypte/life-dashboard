@@ -104,7 +104,67 @@ def goals() -> dict:
     return data.read_cached(HERE / "config.toml", tomllib.loads) or {}
 
 
+PUBLIC_WIDTHS = (4, 8, 5, 11, 7, 14, 6, 10)
+
+
+def public_block(slot: int) -> str:
+    """Today masks vary by display slot, independently of the private value."""
+    return "█" * PUBLIC_WIDTHS[slot % len(PUBLIC_WIDTHS)]
+
+
+def public_small_block(slot: int) -> str:
+    """Masks for the narrow time and nutrient columns."""
+    return "█" * (3 + slot % 3)
+
+
+def public_today(ctx: dict) -> dict:
+    """Only these fields can reach the signed-out Today template."""
+    total = ctx["t"]
+    rows = [{"time": public_small_block(i), "food": public_block(i + 1),
+             "source": public_block(i + 2), "calories": row["calories"],
+             "protein_g": row["protein_g"], "carbs": public_small_block(i),
+             "fat": public_small_block(i + 1)} for i, row in enumerate(ctx["rows"])]
+    week = [{"date": day["date"], "logged": day["logged"],
+             "calories": day["totals"]["calories"],
+             "protein_g": day["totals"]["protein_g"]} for day in ctx["week"]]
+    stats = ctx["weight_stats"]
+    return {
+        "date": ctx["date"], "prev": ctx["prev"], "next": ctx["next"],
+        "rows": rows, "calories": total["calories"], "protein_g": total["protein_g"],
+        "carbs": public_small_block(1), "fat": public_small_block(2), "week": week,
+        "week_avg": ctx["week_avg"], "week_top": ctx["week_top"],
+        "protein_top": ctx["protein_top"],
+        "weighins": [{"kg": w["kg"], "time": w["time"]} for w in ctx["weighins"]],
+        "weight_stats": ({"latest": {"kg": stats["latest"]["kg"],
+                                      "date": stats["latest"]["date"], "time": stats["latest"]["time"]},
+                          "mean": stats["mean"], "change": stats["change"]} if stats else None),
+        "chart": ctx["chart"],
+    }
+
+
+def public_todo(ctx: dict) -> dict:
+    """Todo metadata stays visible; only titles become same-length blocks."""
+    fields = ("id", "due", "due_time", "priority", "project", "labels", "done_on", "repeat")
+    groups = [{**group, "rows": [{**{key: task[key] for key in fields},
+                                  "title": "█" * len(task["title"])} for task in group["rows"]]}
+              for group in ctx["groups"]]
+    return {"page": ctx["page"], "project": ctx["project"], "label": ctx["label"],
+            "groups": groups, "counts": ctx["counts"], "here": ctx["here"], "week": ctx["week"],
+            "palette": (), "edit": None, "added": None, "ticked": None,
+            "rules": (), "date_options": ()}
+
+
 def render(request: Request, name: str, view: str, **ctx):
+    if not signed_in(request):
+        base = {"view": view, "today": data.logical_today(CFG), "conflicts": [],
+                "unit": CFG.weight_unit, "goal": {k: goals().get(k) for k in
+                                                 ("protein_goal_g", "calorie_goal_kcal")},
+                "themes": THEMES, "ranges": RANGES, "signed_in": False, "read_only": True}
+        if view == "today":
+            return templates.TemplateResponse(request, "today_public.html", {**base, **public_today(ctx)})
+        if view == "todo":
+            return templates.TemplateResponse(request, "todo.html", {**base, **public_todo(ctx)})
+        return templates.TemplateResponse(request, "public.html", base)
     return templates.TemplateResponse(request, name, {
         "view": view, "today": data.logical_today(CFG),
         "conflicts": data.conflicts(CFG), "unit": CFG.weight_unit, "goal": goals(),

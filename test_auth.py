@@ -68,9 +68,46 @@ class LoginTest(unittest.TestCase):
             for control in ('method="post"', 'draggable="true"', 'class="edit"', 'details class="when"', 'id="ctx"', "<script>\n  // Quick add"):
                 self.assertNotIn(control, body, page)
         body = call("GET", "/todo/upcoming?x=1")[2]
-        self.assertIn("read me", body)
+        self.assertNotIn("read me", body)
         self.assertIn('href="/login?next=/todo/upcoming%3Fx%3D1"', body)  # back to the same page after logging in
         self.assertEqual(call("GET", "/todo/parse?q=x", sec_fetch_mode="cors")[0], 200)  # a read: open too
+
+    def test_public_pages_never_render_censored_values(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            cfg = app.data.Config(root)
+            db = root / "tasks.sqlite"
+            app.todo.init(db)
+            today = app.data.logical_today(cfg)
+            (root / f"{today}.csv").write_text(
+                "id,time,food,source,calories,protein_g,carbs_g,fat_g,source_url,notes\n"
+                "1,08:13,Lavender Lantern Noodles,private-source-xyz,640,62,37.1,14.7,"
+                "https://private.example/secret-source,hidden-note-xyz\n")
+            (root / "weight.csv").write_text(
+                "id,date,time,weight,unit,weight_kg,source,notes\n"
+                f"1,{today},07:45,72.4,kg,72.4,manual,\n")
+            title = "Call Marigold about rent"
+            app.todo.add(db, app.todo.parse(f"{title} today #studio @errands", today), app.dt.datetime.now())
+            with mock.patch.object(app, "CFG", cfg), mock.patch.object(app, "TODO_DB", db):
+                public_today = call("GET", "/")[2]
+                public_todo = call("GET", "/todo")[2]
+                private_today = call("GET", "/", cookie=self.jar())[2]
+                private_todo = call("GET", "/todo", cookie=self.jar())[2]
+                for secret in ("Lavender Lantern Noodles", "08:13", "private-source-xyz",
+                               "private.example", "hidden-note-xyz", "37.1", "14.7"):
+                    self.assertNotIn(secret, public_today, secret)
+                self.assertNotIn(title, public_todo)
+                self.assertIn("█" * len(title), public_todo)
+                self.assertIn("640", public_today)
+                self.assertIn("62", public_today)
+                self.assertIn("72.4 kg", public_today)
+                self.assertIn("07:45", public_today)
+                self.assertIn("#studio", public_todo)
+                self.assertIn("@errands", public_todo)
+                self.assertIn("Lavender Lantern Noodles", private_today)
+                self.assertIn("hidden-note-xyz", private_today)
+                self.assertIn(title, private_todo)
+                self.assertNotIn(title, call("GET", "/calories")[2])
 
     def test_no_cookie_cannot_write(self):
         posts = lambda routes: [r.path for r in routes if "POST" in (getattr(r, "methods", None) or ())]  # noqa: E731
