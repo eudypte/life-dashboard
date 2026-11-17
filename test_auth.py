@@ -109,6 +109,20 @@ class LoginTest(unittest.TestCase):
                 self.assertIn(title, private_todo)
                 self.assertNotIn(title, call("GET", "/calories")[2])
 
+    def test_signed_out_reading_shows_books_without_write_controls(self):
+        with tempfile.TemporaryDirectory() as folder:
+            cfg = app.data.Config(Path(folder))
+            today = app.data.logical_today(cfg)
+            (Path(folder) / "reading.csv").write_text(
+                "date,time,book,author,page,pages,status\n"
+                f"{today},08:00,The Marigold Atlas,Ada Vale,12,240,reading\n")
+            with mock.patch.object(app, "CFG", cfg):
+                body = call("GET", "/reading")[2]
+                self.assertIn("The Marigold Atlas", body)
+                self.assertIn("Ada Vale", body)
+                self.assertIn("p 12/240", body)
+                self.assertNotIn('method="post"', body)
+
     def test_no_cookie_cannot_write(self):
         posts = lambda routes: [r.path for r in routes if "POST" in (getattr(r, "methods", None) or ())]  # noqa: E731
         self.assertEqual(posts(app.app.routes), ["/login", "/logout"])  # every other write is on todo_app

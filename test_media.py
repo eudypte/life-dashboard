@@ -226,6 +226,8 @@ class MediaPageTest(unittest.TestCase):
         self.assertIn('<a class="watch" href="https://netflix.com/title/1" target="_blank" rel="noopener noreferrer"', body)
         self.assertIn('data-link="https://netflix.com/title/1"', body)
         signed_out = self.call("GET", "/media")[2]
+        self.assertIn('<span class="ti">Linked</span>', signed_out)
+        self.assertIn('S1', signed_out)
         self.assertNotIn('https://netflix.com/title/1', signed_out)  # media details need the login
         self.assertNotIn("data-link", signed_out)
         self.call("POST", "/media/link", {"title": "Linked", "url": "https://www.max.com/shows/x"}, cookie=self.jar)

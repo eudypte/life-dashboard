@@ -164,6 +164,12 @@ def render(request: Request, name: str, view: str, **ctx):
             return templates.TemplateResponse(request, "today_public.html", {**base, **public_today(ctx)})
         if view == "todo":
             return templates.TemplateResponse(request, "todo.html", {**base, **public_todo(ctx)})
+        if view == "reading":
+            return templates.TemplateResponse(request, name, {**base, **ctx})
+        if view == "media":
+            public = {**ctx, "watching": [{**title, "link": None} for title in ctx["watching"]],
+                      "finished": [{**title, "link": None} for title in ctx["finished"]]}
+            return templates.TemplateResponse(request, name, {**base, **public})
         return templates.TemplateResponse(request, "public.html", base)
     return templates.TemplateResponse(request, name, {
         "view": view, "today": data.logical_today(CFG),
