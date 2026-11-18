@@ -12,3 +12,6 @@ presets.json
 !.env.example
 *.local.toml
 *.local.json
+*.sqlite-wal
+*.sqlite-shm
+*.db
