@@ -1,4 +1,4 @@
-"""Read-only access to the nutrition-log data folder.
+"""Read-only access to the log data folder.
 
 Implements the rules in the data handoff. log_entry.py (the only writer) is the
 source of truth; where they disagree, the script wins. Nothing here writes.

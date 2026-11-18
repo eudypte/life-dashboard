@@ -2,12 +2,12 @@
 @font-face { font-family: "IBM Plex Mono"; font-weight: 600; font-display: swap; src: url(ibm-plex-mono-600.woff2) format("woff2"); }
 
 /* Each theme: bg, bg2 (raised/zebra), dim, fg, hi (bright fg), kcal, p, c, f, accent, warn */
-:root, [data-theme="solarized-dark"] {
-  --bg:#002b36; --bg2:#073642; --dim:#586e75; --fg:#839496; --hi:#93a1a1;
+:root, [data-theme="solarized-light"] {
+  --bg:#fdf6e3; --bg2:#eee8d5; --dim:#93a1a1; --fg:#657b83; --hi:#073642;
   --kcal:#859900; --p:#268bd2; --c:#b58900; --f:#cb4b16; --accent:#2aa198; --warn:#dc322f;
 }
-[data-theme="solarized-light"] {
-  --bg:#fdf6e3; --bg2:#eee8d5; --dim:#93a1a1; --fg:#657b83; --hi:#073642;
+[data-theme="solarized-dark"] {
+  --bg:#002b36; --bg2:#073642; --dim:#586e75; --fg:#839496; --hi:#93a1a1;
   --kcal:#859900; --p:#268bd2; --c:#b58900; --f:#cb4b16; --accent:#2aa198; --warn:#dc322f;
 }
 [data-theme="gruvbox"] {
@@ -45,7 +45,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--bg); color-scheme: dark; }
-html[data-theme="solarized-light"], html[data-theme="gruvbox-light"], html[data-theme="paper"], html[data-theme="contrast"] { color-scheme: light; }
+html:not([data-theme]), html[data-theme="solarized-light"], html[data-theme="gruvbox-light"], html[data-theme="paper"], html[data-theme="contrast"] { color-scheme: light; }
 body {
   margin: 0 auto; max-width: 1320px; padding: 14px 16px 32px;
   background: var(--bg); color: var(--fg);

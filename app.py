@@ -1,4 +1,4 @@
-"""Life Dashboard: read-only views over the nutrition-log data folder (food, weight, reading, media), plus a todo list."""
+"""Life Dashboard: read-only views over the log data folder (food, weight, reading, media), plus a todo list."""
 import datetime as dt
 import hashlib
 import hmac
