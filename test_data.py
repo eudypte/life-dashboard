@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import data
 
@@ -121,6 +122,30 @@ class DataTest(unittest.TestCase):
             os.environ.clear()
             os.environ.update(old)
         self.assertEqual(cfg, data.Config(Path("~/Sync/nutrition").expanduser(), 4, "lb"))
+
+    def test_config_errors_identify_bad_settings_and_hour(self):
+        settings = self.dir / "settings.json"
+        settings.write_text("{bad json")
+        with mock.patch.dict(os.environ, {"LIFE_DASHBOARD_SETTINGS": str(settings),
+                                               "NUTRITION_DIR": str(self.dir)}):
+            with self.assertRaisesRegex(RuntimeError, "Cannot read settings JSON"):
+                data.load_config()
+        settings.write_text('{"env": {}}')
+        for bad_hour in ("noon", "-1", "24"):
+            with self.subTest(bad_hour=bad_hour), mock.patch.dict(os.environ, {
+                    "LIFE_DASHBOARD_SETTINGS": str(settings), "NUTRITION_DIR": str(self.dir),
+                    "NUTRITION_DAY_START_HOUR": bad_hour}):
+                with self.assertRaisesRegex(RuntimeError, "NUTRITION_DAY_START_HOUR"):
+                    data.load_config()
+
+    def test_food_source_url_only_allows_web_links(self):
+        self.write("2026-10-13.csv", HEADER
+                   + "1,08:00,A,lookup,1,,100,,,,,,,,,,,javascript:alert(1),\n"
+                   + "2,09:00,B,lookup,1,,100,,,,,,,,,,,https://example.com/food,\n"
+                   + "3,10:00,C,lookup,1,,100,,,,,,,,,,,http://example.org/food,\n"
+                   + "4,11:00,D,lookup,1,,100,,,,,,,,,,,https://[bad,\n")
+        self.assertEqual([r["source_url"] for r in data.day_rows(self.cfg, D)],
+                         ["", "https://example.com/food", "http://example.org/food", ""])
 
     def test_reading_books_progress_and_pages_per_day(self):
         self.write("reading.csv", "date,time,book,author,page,pages,status\n"

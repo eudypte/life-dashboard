@@ -7,3 +7,8 @@ __pycache__/
 presets.json
 *.sqlite
 .lavish
+.env
+.env.*
+!.env.example
+*.local.toml
+*.local.json

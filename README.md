@@ -1,91 +1,64 @@
 # Life Dashboard
 
-Web dashboard over the `nutrition-log` data folder (food, weight, reading, media), plus a todo list, published at https://life.selimd.me.
-It never writes to `NUTRITION_DIR`; the todo list at `/todo` and the media log at `/media` are the only things that write, to their own SQLite file. The data rules come from the data handoff; `log_entry.py` is the source of truth.
+Life Dashboard is a personal web dashboard that puts my food log, weight, reading, shows, and todo list on one page.
+It is built with FastAPI and Jinja, styled like a terminal, and runs on an Oracle Cloud Always Free VM.
 
-## Config
+## What it does
 
-- `NUTRITION_DIR`, `NUTRITION_DAY_START_HOUR` and `NUTRITION_WEIGHT_UNIT` come from the `env` block of `~/nutrition-agent/.claude/settings.json`.
-- Environment variables with the same names override it, and `LIFE_DASHBOARD_SETTINGS` points at a different settings file.
-- Daily targets live in `config.toml` in this folder and are re-read on change.
-- `TODO_DB` is the todo list's SQLite file, default `~/.local/share/life-dashboard/todo.sqlite`. The app refuses to start if it is inside `NUTRITION_DIR`.
-- `/reading` reads `reading.csv` in `NUTRITION_DIR`: `date,time,book,author,page,pages,status`, status `start`, `reading`, `done` or `dropped` (see `data.py`). A `start` row marks the page where logging that book began: it counts as no pages read, and later pages count from it.
-- `/media` reads `media.csv` in `NUTRITION_DIR`, appended outside the app like `reading.csv`: `date,time,title,kind,season,episode,episodes,position,runtime,status` (see `data.py`). An episode with a `position` (like `5:45`) is paused that far in; without one it is finished. Its +1, done, ticks and quick add go to a `media_log` table in `TODO_DB`, and the page shows both logs merged in time order.
-- `LIFE_DASHBOARD_TOKEN` is the login token for changing the todo list and the media log (see Login), set only in the environment, never in this repo.
+- **Today** - what I ate today, with calories and protein against daily goals, the last 7 days, and a 30-day weight chart.
+- **Calories** and **Macros** - daily totals and protein/carbs/fat split over 7, 30, or 90 days.
+- **Weight** - weigh-ins, trend chart, and stats in kg or lb.
+- **Todo** - a task list with projects, labels, priorities, due dates, and an upcoming-week view.
+- **Reading** - books in progress, finished books, pages per day, and reading streaks.
+- **Media** - shows and movies I am watching, with one-click episode progress and a finished list.
+- **Themes** - ten color themes (Solarized, Gruvbox, Nord, Dracula, Tokyo Night, Amber CRT, and more) in IBM Plex Mono.
 
-## Login
+The site is public, but anyone who is not signed in sees a censored view.
+Food names, carbs, fat, and todo titles are blacked out, and Calories, Macros, Weight, and Presets need a login.
+Signing in with a secret token unlocks everything and the edit controls.
 
-Anyone can read every page; changing anything needs the token.
-Signed out, the home page, `/todo` and `/media` are read-only: no quick add, ticking, dragging, date or project menus, and a "log in" link in the footer.
-The link opens a single password box and comes back to the same page; the right token sets a cookie for a year that holds an HMAC of the token, never the token itself.
-The server refuses every signed-out write: a fetch gets 403 and a plain form goes to the login box.
-Changing the token logs out every device.
-If `LIFE_DASHBOARD_TOKEN` is not set, the app still starts, logs a warning, and everything stays read-only.
+## How it works
 
-Generate a token (about 26 characters) and save it in your password manager:
+Nutrition, weight, reading, and media entries are plain CSV files in a data folder that other tools write to.
+The dashboard only reads that folder and never changes it.
+Todos and media actions taken in the dashboard are saved to a separate SQLite file.
+Daily calorie and protein goals live in [config.toml](config.toml).
 
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(20)[:26])"
-```
+## Run it locally with fake data
 
-On the VM, put it in an environment file outside the repo; `life-dashboard.service` loads it with `EnvironmentFile=`.
-Unit files are not deployed automatically, so copy the unit once after this change:
+Needs Python 3.11 or newer.
+This creates throwaway example data in a temp folder:
 
 ```bash
-install -m 600 /dev/null ~/.config/life-dashboard.env
-read -rs t && echo "LIFE_DASHBOARD_TOKEN=$t" > ~/.config/life-dashboard.env   # paste the token; it stays out of history
-cp ~/life-dashboard/life-dashboard.service ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user restart life-dashboard
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+
+demo="$(mktemp -d)" && mkdir "$demo/nutrition"
+printf 'id,time,food,source,calories,protein_g,carbs_g,fat_g\n1,08:00,Oatmeal,manual,320,12,48,9\n' > "$demo/nutrition/$(date +%F).csv"
+printf 'id,date,time,weight,unit,weight_kg\n1,%s,07:30,70,kg,70\n' "$(date +%F)" > "$demo/nutrition/weight.csv"
+
+NUTRITION_DIR="$demo/nutrition" TODO_DB="$demo/todo.sqlite" \
+LIFE_DASHBOARD_SETTINGS="$demo/none.json" LIFE_DASHBOARD_TOKEN=demo-token \
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8090
 ```
 
-To change the token, edit the file and restart the service.
+Open http://127.0.0.1:8090 to see the public view, then log in with `demo-token` to see everything.
 
-## Layout on the VM
+Run the tests with `.venv/bin/python -m unittest`.
 
-| Piece | Location |
-| --- | --- |
-| Deploy clone (never edit by hand) | `~/life-dashboard` |
-| App service | `~/.config/systemd/user/life-dashboard.service`, `127.0.0.1:8090` |
-| Auto-deploy | `life-dashboard-deploy.timer` runs `deploy.sh` every 2 minutes |
-| Public access | Cloudflare Tunnel route `life.selimd.me` to `http://127.0.0.1:8090` |
-| Todo list, media log | `~/.local/share/life-dashboard/todo.sqlite`, the only copy (see Backup) |
+## Configuration
 
-## Workflow
+All settings are environment variables, listed with example values in [.env.example](.env.example).
+The app does not load `.env` files itself, so export them in your shell or service.
+Generate a real token with `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'`.
 
-```bash
-# on the Mac
-NUTRITION_DIR=~/path/to/Sync/nutrition TODO_DB=/tmp/todo.sqlite LIFE_DASHBOARD_TOKEN=local-dev-token .venv/bin/uvicorn app:app --reload --port 8090
-.venv/bin/python -m unittest
-git commit -am "describe the change" && git push    # live within ~2 minutes
-```
+## Deploying
 
-`deploy.sh` fast-forwards to `origin/main`, installs dependencies if `requirements.txt` changed, runs the tests, checks that `app.py` imports, restarts the service, and health-checks it. Any failure rolls back to the previous commit, and a failed commit is not retried until the next push.
+`life-dashboard.service`, `life-dashboard-deploy.timer`, and `deploy.sh` are the systemd setup that deploys it: it pulls `main` every two minutes, runs the tests, restarts the app, and rolls back if it fails.
+Behind HTTPS, set `LIFE_DASHBOARD_ORIGIN` to your public URL, or logins and edits will be refused.
+Keep the data folder and SQLite file outside the checkout, and back up the SQLite file.
 
-```bash
-# on the VM
-~/life-dashboard/deploy.sh                 # deploy now instead of waiting
-~/life-dashboard/deploy.sh --force         # redeploy the current commit
-journalctl --user -u life-dashboard-deploy -n 20
-journalctl --user -u life-dashboard -n 30
-```
+## License
 
-Rules: never edit `~/life-dashboard` on the VM, and never force-push `main`. Unit files are not deployed automatically; after changing one, copy it to `~/.config/systemd/user/` and run `systemctl --user daemon-reload`.
-
-## Backup
-
-The todo list and the media page's log live only in `TODO_DB`. Copy it nightly with a crontab line on the VM (needs `apt install sqlite3`):
-
-```bash
-0 3 * * * sqlite3 ~/.local/share/life-dashboard/todo.sqlite ".backup $HOME/todo-backup.sqlite"
-```
-
-## Acceptance check
-
-Compare the Today, Calories and Weight numbers with the read-only commands, run from `~/nutrition-agent`:
-
-```bash
-python3 .claude/skills/nutrition-log/scripts/log_entry.py totals
-python3 .claude/skills/nutrition-log/scripts/log_entry.py totals --days 7
-python3 .claude/skills/nutrition-log/scripts/log_entry.py weight show --days 30
-python3 .claude/skills/nutrition-log/scripts/log_entry.py preset list
-```
+[MIT](LICENSE).
+The bundled IBM Plex Mono font is under the [SIL Open Font License 1.1](static/OFL.txt).

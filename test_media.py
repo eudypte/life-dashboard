@@ -161,7 +161,8 @@ class MediaTest(unittest.TestCase):
 
 class MediaPageTest(unittest.TestCase):
     def setUp(self):
-        patch = mock.patch.dict(os.environ, {"LIFE_DASHBOARD_TOKEN": test_auth.TOKEN})
+        patch = mock.patch.dict(os.environ, {"LIFE_DASHBOARD_TOKEN": test_auth.TOKEN,
+                                         "LIFE_DASHBOARD_ORIGIN": "http://127.0.0.1:8090"})
         patch.start()
         self.addCleanup(patch.stop)
         self.app, self.call = test_auth.app, test_auth.call

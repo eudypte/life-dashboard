@@ -7,7 +7,6 @@ NUTRITION_DIR, appended outside the app, and this page's own log, a table in the
 import datetime as dt
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import data
 from todo import _db
@@ -111,16 +110,7 @@ def set_order(path: Path, titles: list[str]) -> None:
 def link_url(text: str) -> str | None:
     """A watch link as typed: http(s) only, "https://" added when there is no scheme. None if it is not one
     (another scheme like "javascript:" turns into a host that does not parse)."""
-    text = text.strip()
-    if "://" not in text:
-        text = "https://" + text
-    parts = urlsplit(text)
-    try:
-        parts.port  # noqa: B018  raises on a host like "javascript:alert(1)"
-    except ValueError:
-        return None
-    ok = parts.scheme in ("http", "https") and "." in (parts.hostname or "") and not any(c.isspace() for c in text)
-    return text if ok else None
+    return data.web_url(text)
 
 
 def links(path: Path) -> dict[str, str]:

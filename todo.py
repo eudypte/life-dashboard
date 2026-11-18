@@ -30,6 +30,10 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS task (
 CREATE TABLE IF NOT EXISTS project (name TEXT PRIMARY KEY);  -- kept even when no task uses it
 CREATE TABLE IF NOT EXISTS label (name TEXT PRIMARY KEY, color TEXT NOT NULL);  -- color: one of PALETTE
 CREATE TABLE IF NOT EXISTS task_label (task_id INTEGER NOT NULL, label TEXT NOT NULL, PRIMARY KEY (task_id, label))"""
+SESSION_SCHEMA = """CREATE TABLE IF NOT EXISTS auth_session (
+  digest TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+)"""
 # Label colors: the theme's own color variables (static/style.css .lc-*), so every theme has them.
 PALETTE = ("p", "c", "f", "kcal", "accent", "warn")
 NEXT_POS = "(SELECT COALESCE(MAX(COALESCE(pos, id)), 0) + 1 FROM task)"
@@ -69,12 +73,30 @@ def init(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with _db(path) as con:
         con.executescript(SCHEMA)
+        con.execute(SESSION_SCHEMA)
         have = {row["name"] for row in con.execute("PRAGMA table_info(task)")}
         for column in ("pos", "day_order"):  # files made before these columns
             if column not in have:
                 con.execute(f"ALTER TABLE task ADD COLUMN {column} INTEGER")
         # files made before the project table: every name a task uses becomes a project
         con.execute("INSERT OR IGNORE INTO project (name) SELECT DISTINCT project FROM task WHERE project IS NOT NULL")
+
+
+def create_session(path: Path, digest: str, expires_at: int, now: int) -> None:
+    with _db(path) as con:
+        con.execute("DELETE FROM auth_session WHERE expires_at <= ?", (now,))
+        con.execute("INSERT INTO auth_session (digest, expires_at) VALUES (?, ?)", (digest, expires_at))
+
+
+def session_valid(path: Path, digest: str, now: int) -> bool:
+    with _db(path) as con:
+        return con.execute("SELECT 1 FROM auth_session WHERE digest = ? AND expires_at > ?",
+                           (digest, now)).fetchone() is not None
+
+
+def delete_session(path: Path, digest: str) -> None:
+    with _db(path) as con:
+        con.execute("DELETE FROM auth_session WHERE digest = ?", (digest,))
 
 
 def _task(row) -> dict:

@@ -12,7 +12,8 @@ _tmp = tempfile.TemporaryDirectory()
 unittest.addModuleCleanup(_tmp.cleanup)
 TMP = Path(_tmp.name)
 with mock.patch.dict(os.environ, {"NUTRITION_DIR": str(TMP / "nutrition"), "TODO_DB": str(TMP / "todo.sqlite"),
-                                  "LIFE_DASHBOARD_SETTINGS": str(TMP / "none.json"), "LIFE_DASHBOARD_TOKEN": TOKEN}):
+                                  "LIFE_DASHBOARD_SETTINGS": str(TMP / "none.json"), "LIFE_DASHBOARD_TOKEN": TOKEN,
+                                  "LIFE_DASHBOARD_ORIGIN": "http://127.0.0.1:8090"}):
     import app
 
 
@@ -21,7 +22,9 @@ def call(method: str, path: str, form: dict | None = None, cookie: str = "", **h
     path, _, query = path.partition("?")
     body = urlencode(form or {}).encode()
     headers = {"host": "127.0.0.1:8090", **({"cookie": cookie} if cookie else {}),
+               **({"origin": "http://127.0.0.1:8090"} if method == "POST" else {}),
                **{k.replace("_", "-"): v for k, v in headers.items()}}
+    headers = {k: v for k, v in headers.items() if v is not None}
     scope = {"type": "http", "http_version": "1.1", "method": method, "scheme": "http", "path": path,
              "raw_path": path.encode(), "query_string": query.encode(), "root_path": "",
              "headers": [(k.encode(), v.encode()) for k, v in headers.items()],
@@ -46,7 +49,8 @@ LOG_IN = '>log in</a>'
 
 class LoginTest(unittest.TestCase):
     def setUp(self):
-        patch = mock.patch.dict(os.environ, {"LIFE_DASHBOARD_TOKEN": TOKEN})
+        patch = mock.patch.dict(os.environ, {"LIFE_DASHBOARD_TOKEN": TOKEN,
+                                         "LIFE_DASHBOARD_ORIGIN": "http://127.0.0.1:8090"})
         patch.start()
         self.addCleanup(patch.stop)
 
@@ -123,6 +127,28 @@ class LoginTest(unittest.TestCase):
                 self.assertIn("p 12/240", body)
                 self.assertNotIn('method="post"', body)
 
+    def test_food_source_links_are_safe_in_the_signed_in_page(self):
+        with tempfile.TemporaryDirectory() as folder:
+            cfg = app.data.Config(Path(folder))
+            today = app.data.logical_today(cfg)
+            (Path(folder) / f"{today}.csv").write_text(
+                "id,time,food,source,calories,source_url\n"
+                "1,08:00,Unsafe,lookup,100,javascript:alert(1)\n"
+                "2,09:00,Safe,lookup,100,https://example.com/food\n"
+                "3,10:00,Also safe,lookup,100,http://example.org/food\n")
+            with mock.patch.object(app, "CFG", cfg):
+                body = call("GET", "/", cookie=self.jar())[2]
+                self.assertNotIn('href="javascript:', body)
+                self.assertIn('href="https://example.com/food"', body)
+                self.assertIn('href="http://example.org/food"', body)
+
+    def test_bad_goals_toml_has_a_clear_error(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "config.toml").write_text("protein_goal_g = [")
+            with mock.patch.object(app, "HERE", Path(folder)):
+                with self.assertRaisesRegex(RuntimeError, "Cannot read goals TOML"):
+                    app.goals()
+
     def test_no_cookie_cannot_write(self):
         posts = lambda routes: [r.path for r in routes if "POST" in (getattr(r, "methods", None) or ())]  # noqa: E731
         self.assertEqual(posts(app.app.routes), ["/login", "/logout"])  # every other write is on todo_app
@@ -163,10 +189,11 @@ class LoginTest(unittest.TestCase):
         self.assertEqual((status, headers["location"]), (303, "/todo/inbox"))
         cookie = headers["set-cookie"]
         self.assertNotIn(TOKEN, cookie)
-        for part in ("HttpOnly", "Max-Age=31536000", "Path=/", "SameSite=lax"):
+        for part in ("HttpOnly", "Max-Age=2592000", "Path=/", "SameSite=lax"):
             self.assertIn(part, cookie)
         self.assertNotIn("Secure", cookie)  # plain http on 127.0.0.1 for local dev
-        self.assertIn("Secure", self.login(host="life.selimd.me")[1]["set-cookie"])
+        with mock.patch.dict(os.environ, {"LIFE_DASHBOARD_ORIGIN": "https://dashboard.example"}):
+            self.assertIn("Secure", self.login(host="127.0.0.1:8090", origin="https://dashboard.example")[1]["set-cookie"])
         jar = cookie.split(";")[0]
         for page in ("/", "/todo"):
             status, _, body = call("GET", page, cookie=jar)
@@ -211,6 +238,17 @@ class LoginTest(unittest.TestCase):
         status, headers, _ = call("POST", "/logout", cookie=jar)
         self.assertEqual((status, headers["location"]), (303, "/login"))
         self.assertIn('auth=""', headers["set-cookie"])
+        self.assertIn(LOG_IN, call("GET", "/todo", cookie=jar)[2])
+        self.assertEqual(call("POST", "/todo/add", {"q": "after logout"}, cookie=jar,
+                              sec_fetch_mode="cors")[0], 403)
+
+    def test_session_expires(self):
+        jar = self.jar()
+        now = app.time.time()
+        with mock.patch.object(app.time, "time", return_value=now + app.SESSION_MAX_AGE + 1):
+            self.assertIn(LOG_IN, call("GET", "/todo", cookie=jar)[2])
+            self.assertEqual(call("POST", "/todo/add", {"q": "expired"}, cookie=jar,
+                                  sec_fetch_mode="cors")[0], 403)
 
     def test_token_unset(self):
         jar = self.jar()
@@ -228,6 +266,25 @@ class LoginTest(unittest.TestCase):
         self.assertEqual(self.login(**evil)[0], 403)
         self.assertEqual(call("POST", "/todo/add", {"q": "x", "next": "/todo"}, cookie=jar,
                               origin="http://127.0.0.1:8090")[0], 303)
+        for path in ("/login", "/logout", "/todo/add", "/media/log"):
+            form = {"token": TOKEN, "q": "blocked"}
+            self.assertEqual(call("POST", path, form, cookie=jar, origin=None)[0], 403, path)
+        self.assertEqual(call("POST", "/todo/add", {"q": "blocked"}, cookie=jar,
+                              origin="https://127.0.0.1:8090")[0], 403)
+        self.assertEqual(call("POST", "/todo/add", {"q": "blocked"}, cookie=jar,
+                              origin="http://127.0.0.1:8090.evil.example")[0], 403)
+        self.assertEqual(call("POST", "/todo/add", {"q": "blocked"}, cookie=jar,
+                              origin="https://[invalid")[0], 403)
+
+    def test_public_host_requires_configured_origin(self):
+        self.assertEqual(self.login(host="dashboard.example", origin="https://dashboard.example")[0], 403)
+        with mock.patch.dict(os.environ, {"LIFE_DASHBOARD_ORIGIN": "https://dashboard.example"}):
+            status, headers, _ = self.login(host="dashboard.example", origin="https://dashboard.example")
+            self.assertEqual(status, 303)
+            self.assertIn("Secure", headers["set-cookie"])
+            jar = headers["set-cookie"].split(";")[0]
+            self.assertEqual(call("POST", "/todo/add", {"q": "proxy case"}, cookie=jar,
+                                  host="dashboard.example", origin="https://dashboard.example")[0], 303)
 
     def test_next_stays_on_site(self):
         for target in ("//evil.example", "/\\evil.example", "https://evil.example"):

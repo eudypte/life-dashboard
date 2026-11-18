@@ -10,6 +10,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 NUTRIENTS = (
     "calories", "fat_g", "sat_fat_g", "trans_fat_g", "cholesterol_mg", "sodium_mg",
@@ -30,16 +31,49 @@ def load_config() -> Config:
     """Read the env block of the agent's settings.json; environment variables override."""
     settings = Path(os.environ.get(
         "LIFE_DASHBOARD_SETTINGS", "~/nutrition-agent/.claude/settings.json")).expanduser()
-    env = json.loads(settings.read_text()).get("env", {}) if settings.exists() else {}
+    if settings.exists():
+        try:
+            document = json.loads(settings.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Cannot read settings JSON at {settings}: {exc}") from exc
+        if not isinstance(document, dict) or not isinstance(document.get("env", {}), dict):
+            raise RuntimeError(f"Settings JSON at {settings} must contain an env object")
+        env = document.get("env", {})
+    else:
+        env = {}
     env |= {k: os.environ[k] for k in ENV_KEYS if k in os.environ}
     if not env.get("NUTRITION_DIR"):
         raise RuntimeError(f"NUTRITION_DIR not set in {settings} or the environment")
+    try:
+        day_start_hour = int(env.get("NUTRITION_DAY_START_HOUR", 0))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("NUTRITION_DAY_START_HOUR must be an integer from 0 to 23") from exc
+    if not 0 <= day_start_hour <= 23:
+        raise RuntimeError("NUTRITION_DAY_START_HOUR must be an integer from 0 to 23")
     unit = env.get("NUTRITION_WEIGHT_UNIT", "kg").lower()
     return Config(
         data_dir=Path(env["NUTRITION_DIR"]).expanduser(),
-        day_start_hour=int(env.get("NUTRITION_DAY_START_HOUR", 0)),
+        day_start_hour=day_start_hour,
         weight_unit=unit if unit in ("kg", "lb") else "kg",
     )
+
+
+def web_url(text: str) -> str | None:
+    """Return an HTTP(S) link, adding HTTPS to a bare domain, or None if unsafe."""
+    text = text.strip()
+    if not text:
+        return None
+    if "://" not in text:
+        text = "https://" + text
+    try:
+        parts = urlsplit(text)
+        _ = parts.port
+    except ValueError:
+        return None
+    if (parts.scheme not in ("http", "https") or not parts.hostname or "." not in parts.hostname
+            or any(c.isspace() for c in text) or parts.username or parts.password):
+        return None
+    return text
 
 
 def logical_today(cfg: Config, now: dt.datetime | None = None) -> dt.date:
@@ -95,6 +129,7 @@ def _food_row(r: dict) -> dict | None:
     try:
         row = {k: (r.get(k) or "").strip()
                for k in ("time", "food", "source", "serving_size", "source_url", "notes")}
+        row["source_url"] = web_url(row["source_url"]) or ""
         row["id"] = int(r["id"])
         row["servings"] = _num(r.get("servings"))
         for n in NUTRIENTS:

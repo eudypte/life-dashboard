@@ -5,6 +5,8 @@ import hmac
 import logging
 import os
 import re
+import secrets
+import time
 import tomllib
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -101,7 +103,13 @@ def weight_chart(window, all_ws, end: dt.date, days: int, w: int = 600, h: int =
 
 def goals() -> dict:
     """Targets live in this app's config.toml, never in the data folder."""
-    return data.read_cached(HERE / "config.toml", tomllib.loads) or {}
+    try:
+        return data.read_cached(HERE / "config.toml", tomllib.loads) or {}
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise RuntimeError(f"Cannot read goals TOML at {HERE / 'config.toml'}: {exc}") from exc
+
+
+goals()  # Fail at startup with a useful message if the goals file is malformed.
 
 
 PUBLIC_WIDTHS = (4, 8, 5, 11, 7, 14, 6, 10)
@@ -180,13 +188,13 @@ def render(request: Request, name: str, view: str, **ctx):
 
 
 # ---------- login ----------
-# Anyone can read every page; one token, set on the server, is needed to change anything (require_login).
-# Signed out, the home page, /todo and /media render read-only, with a "log in" link in the footer.
+# Signed-out views have the public projection above; one token is needed for private views and writes.
 # A signed-out write is refused: a plain form post goes to the login form, a fetch from todo.html gets 403.
 
 COOKIE = "auth"
+SESSION_MAX_AGE = 30 * 24 * 60 * 60
 if not os.environ.get("LIFE_DASHBOARD_TOKEN"):
-    logging.getLogger("uvicorn.error").warning("LIFE_DASHBOARD_TOKEN is not set: the home page and /todo stay locked")
+    logging.getLogger("uvicorn.error").warning("LIFE_DASHBOARD_TOKEN is not set: private views and writes are disabled")
 
 
 def token() -> str:
@@ -194,21 +202,45 @@ def token() -> str:
     return os.environ.get("LIFE_DASHBOARD_TOKEN", "")
 
 
-def session() -> str | None:
-    """The cookie value: an HMAC of the token, so the cookie never holds the token itself
-    and changing the token logs every device out. None while no token is set."""
-    return hmac.new(token().encode(), b"life-dashboard login", hashlib.sha256).hexdigest() if token() else None
+def session_digest(cookie: str) -> str | None:
+    """Store only a keyed digest; rotating the server token invalidates every session."""
+    key = token()
+    return hmac.new(key.encode(), cookie.encode(), hashlib.sha256).hexdigest() if key and cookie else None
 
 
 def signed_in(request: Request) -> bool:
-    expected = session()
-    return expected is not None and hmac.compare_digest(request.cookies.get(COOKIE, ""), expected)
+    digest = session_digest(request.cookies.get(COOKIE, ""))
+    return digest is not None and todo.session_valid(TODO_DB, digest, int(time.time()))
+
+
+def origin_parts(value: str) -> tuple[str, str, int] | None:
+    """Normalize a web origin; paths, credentials, and malformed ports are not origins."""
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError:
+        return None
+    if (parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password
+            or parts.path not in ("", "/") or parts.query or parts.fragment):
+        return None
+    return parts.scheme, parts.hostname.lower(), port or (443 if parts.scheme == "https" else 80)
+
+
+def trusted_origin(request: Request) -> tuple[str, str, int] | None:
+    configured = os.environ.get("LIFE_DASHBOARD_ORIGIN", "")
+    if configured:
+        return origin_parts(configured)
+    # A missing origin configuration is safe for local development, but fails closed on a public host.
+    if request.url.hostname in ("127.0.0.1", "localhost"):
+        return origin_parts(str(request.base_url))
+    return None
 
 
 def same_origin(request: Request) -> bool:
-    """A browser POST from another site carries its Origin; no Origin (curl, old browsers) is allowed."""
+    """Only accept an unsafe request from the configured external origin."""
     origin = request.headers.get("origin")
-    return origin is None or urlsplit(origin).netloc == request.headers.get("host")
+    expected = trusted_origin(request)
+    return origin is not None and expected is not None and origin_parts(origin) == expected
 
 
 def local(page: str) -> str:
@@ -234,8 +266,8 @@ def login_needed(request: Request, _: LoginNeeded):
 
 
 def require_login(request: Request):
-    """Reads are open to anyone; every write needs the login."""
-    if request.method == "POST" and not same_origin(request):
+    """Public projections are readable by anyone; every write needs the login."""
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not same_origin(request):
         raise HTTPException(403)
     if request.method == "GET" or signed_in(request):
         return
@@ -256,16 +288,23 @@ async def login(request: Request):
     f = await form(request)
     if not token() or not hmac.compare_digest(f.get("token", "").encode(), token().encode()):
         return login_page(request, f.get("next", ""), wrong=True)
+    cookie = secrets.token_urlsafe(32)
+    now = int(time.time())
+    todo.create_session(TODO_DB, session_digest(cookie), now + SESSION_MAX_AGE, now)
     r = RedirectResponse(local(f.get("next", "")), status_code=303)
-    r.set_cookie(COOKIE, session(), max_age=365 * 24 * 3600, httponly=True, samesite="lax",
-                 secure=request.url.scheme == "https" or request.url.hostname not in ("127.0.0.1", "localhost"))
+    r.set_cookie(COOKIE, cookie, max_age=SESSION_MAX_AGE, httponly=True, samesite="lax",
+                 secure=trusted_origin(request)[0] == "https")
     return r
 
 
 @app.post("/logout")
-def logout():
+def logout(request: Request):
+    if not same_origin(request):
+        raise HTTPException(403)
+    if digest := session_digest(request.cookies.get(COOKIE, "")):
+        todo.delete_session(TODO_DB, digest)
     r = RedirectResponse("/login", status_code=303)
-    r.delete_cookie(COOKIE)
+    r.delete_cookie(COOKIE, secure=trusted_origin(request)[0] == "https")
     return r
 
 
